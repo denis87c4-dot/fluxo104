@@ -5,9 +5,9 @@ st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira")
 st.markdown("Acompanhamento financeiro em tempo real.")
 
-# Inicializar estados na memória
+# Inicializar estados na memória para persistir os dados
 if "lancamentos" not in st.session_state:
-    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcelas"])
+    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcelas"])
 
 if "categorias" not in st.session_state:
     st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Outros"]
@@ -31,45 +31,57 @@ if aba == "Dashboard":
     col3.metric("Despesas do Mês", f"R$ {total_despesas:,.2f}")
 
 elif aba == "Cadastro (Form)":
-    st.subheader("Novo Registro (Form)")
+    st.subheader("Novo Registro")
     
-    contas_disponiveis = ["Cash husband", "Nubank"]
+    tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
+    status = st.selectbox("Status / Fase", ["Budget", "Efetivado"])
+    descricao = st.text_input("Descrição", placeholder="Ex: Supermercado, Farmácia...")
+    
+    # --- SEÇÃO DE CATEGORIAS DINÂMICA ---
+    lista_cat_opcao = st.session_state.categorias + ["+ Incluir Nova Categoria..."]
+    cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
+    
+    categoria_final = cat_escolhida
+    if cat_escolhida == "+ Incluir Nova Categoria...":
+        nova_cat_digitada = st.text_input("Digite o nome da nova categoria:")
+        if nova_cat_digitada.strip() != "":
+            categoria_final = nova_cat_digitada.strip()
+
+    # --- SEÇÃO DE CONTAS / CARTÕES DINÂMICA ---
+    contas_base = ["Cash husband", "Nubank"]
     if not st.session_state.cartoes.empty:
-        contas_disponiveis.extend(st.session_state.cartoes["Nome"].tolist())
+        contas_base.extend(st.session_state.cartoes["Nome"].tolist())
+    
+    lista_conta_opcao = contas_base + ["+ Incluir Novo Cartão/Conta..."]
+    conta_escolhida = st.selectbox("Conta / Cartão", lista_conta_opcao)
+    
+    conta_final = conta_escolhida
+    if conta_escolhida == "+ Incluir Novo Cartão/Conta...":
+        novo_cartao_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
+        if novo_cartao_digitado.strip() != "":
+            conta_final = novo_cartao_digitado.strip()
+            # Adiciona automaticamente na tabela de cartões para salvar
+            novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 0.0, "Vencimento": 17}])
+            st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
 
-    with st.form("form_cadastro"):
-        tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
-        status = st.selectbox("Status / Fase", ["Budget", "Efetivado"])
-        descricao = st.text_input("Descrição", placeholder="Ex: Supermercado...")
-        
-        # Opção de categoria e inclusão rápida
-        cat_opcao = st.selectbox("Categoria", st.session_state.categorias + ["+ Incluir Nova Categoria..."])
-        
-        nova_cat_input = ""
-        if cat_opcao == "+ Incluir Nova Categoria...":
-            nova_cat_input = st.text_input("Digite o nome da nova categoria:")
+    valor = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
+    data = st.date_input("Data da Compra")
+    parcelas = st.number_input("Parcelas", min_value=1, max_value=24, value=1)
+    
+    if st.button("Salvar Lançamento", type="primary"):
+        # Salva nova categoria na lista oficial se ela for inédita
+        if cat_escolhida == "+ Incluir Nova Categoria..." and categoria_final not in st.session_state.categorias:
+            st.session_state.categorias.append(categoria_final)
 
-        conta = st.selectbox("Conta / Cartão", contas_disponiveis)
-        valor = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
-        data = st.date_input("Data da Compra")
-        parcelas = st.number_input("Parcelas", min_value=1, max_value=24, value=1)
-        enviado = st.form_submit_button("Salvar Lançamento")
-
-        if enviado:
-            categoria_final = cat_opcao
-            if cat_opcao == "+ Incluir Nova Categoria...":
-                if nova_cat_input.strip() != "":
-                    categoria_final = nova_cat_input.strip()
-                    if categoria_final not in st.session_state.categorias:
-                        st.session_state.categorias.append(categoria_final)
-                else:
-                    categoria_final = "Outros"
-
+        if descricao.strip() == "":
+            st.warning("Por favor, preencha a descrição.")
+        else:
             novo_dado = pd.DataFrame([{
                 "Tipo": tipo, 
+                "Status": status,
                 "Descricao": descricao, 
                 "Categoria": categoria_final, 
-                "Conta": conta, 
+                "Conta": conta_final, 
                 "Valor": valor, 
                 "Data": str(data), 
                 "Parcelas": parcelas
