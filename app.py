@@ -34,7 +34,7 @@ else:
 def colorir_negativos(val):
     if isinstance(val, str) and "R$" in val:
         try:
-            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").strip()
+            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").replace("%", "").strip()
             val_num = float(limpo)
             if val_num < 0:
                 return 'color: #ff4b4b; font-weight: bold;'
@@ -45,7 +45,7 @@ def colorir_negativos(val):
     return ''
 
 # Menu lateral
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Financial Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Dashboard Financeiro")
@@ -230,6 +230,64 @@ elif aba == "Financial Indicators":
         st.dataframe(df_indicators, use_container_width=True)
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
+
+elif aba == "Statistical Indicators":
+    st.subheader("📊 Statistical Indicators (Budget Expenses)")
+    st.markdown("Parâmetros estatísticos, desvio padrão, Z-score e interpretação automatizada mês a mês.")
+    
+    df = st.session_state.lancamentos
+    if not df.empty and not df[df["Status"] == "Budget"].empty:
+        df_b = df[df["Status"] == "Budget"].copy()
+        df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
+        df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
+        
+        # Agrupa despesas por mês
+        df_exp_mes = df_b[df_b["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
+        df_exp_mes = df_exp_mes.sort_values("AnoMes")
+        
+        if len(df_exp_mes) > 0:
+            valores = df_exp_mes["Valor"]
+            media_geral = valores.mean()
+            desvio_padrao = valores.std() if len(valores) > 1 else 0.0
+            
+            dados_stats = []
+            for idx, row in df_exp_mes.iterrows():
+                m = row["AnoMes"]
+                val = row["Valor"]
+                
+                # Cálculo do Z-Score
+                if desvio_padrao > 0:
+                    z_score = (val - media_geral) / desvio_padrao
+                else:
+                    z_score = 0.0
+                
+                # Interpretação conjunta inteligente
+                if z_score > 1.5:
+                    interpretacao = "⚠️ Alerta: Gastos muito acima da média histórica"
+                elif z_score > 0.5:
+                    interpretacao = "⚡ Acima da média histórica"
+                elif z_score < -1.5:
+                    interpretacao = "🌟 Excelente: Muito abaixo da média"
+                elif z_score < -0.5:
+                    interpretacao = "📉 Abaixo da média histórica"
+                else:
+                    interpretacao = "✅ Dentro da normalidade esperada"
+                
+                dados_stats.append({
+                    "Mês": m,
+                    "Total Expenses": f"R$ {val:,.2f}",
+                    "Média Histórica": f"R$ {media_geral:,.2f}",
+                    "Desvio Padrão": f"R$ {desvio_padrao:,.2f}",
+                    "Z-Score": round(z_score, 2),
+                    "Interpretação": interpretacao
+                })
+                
+            df_statistical = pd.DataFrame(dados_stats).set_index("Mês")
+            st.dataframe(df_statistical.style.map(colorir_negativos), use_container_width=True)
+        else:
+            st.info("Nenhuma despesa em Budget registrada para gerar estatísticas.")
+    else:
+        st.info("Nenhum dado de Budget cadastrado para calcular os indicadores estatísticos.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
