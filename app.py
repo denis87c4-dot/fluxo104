@@ -5,7 +5,6 @@ import os
 import altair as alt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from scipy.stats import skew, kurtosis
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira")
@@ -293,13 +292,13 @@ elif aba == "Statistical Indicators":
             st.markdown("### 📈 Advanced Distribution Metrics (Skew, Kurtosis & Trend Slope)")
             st.markdown("Análise avançada da distribuição dos gastos e tendência temporal da série financeira.")
             
-            # Cálculos avançados globais para a série temporal
+            # Cálculos avançados nativos via Pandas/Numpy (sem dependência externa scipy)
             vals_array = valores.values
             n_val = len(vals_array)
             
             if n_val >= 3:
-                skew_val = float(skew(vals_array, nan_policy='omit'))
-                kurt_val = float(kurtosis(vals_array, nan_policy='omit')) # excess kurtosis
+                skew_val = float(pd.Series(vals_array).skew())
+                kurt_val = float(pd.Series(vals_array).kurtosis())
             else:
                 skew_val = 0.0
                 kurt_val = 0.0
