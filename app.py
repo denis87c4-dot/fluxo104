@@ -1,21 +1,38 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira")
-st.markdown("Acompanhamento financeiro em tempo real.")
+st.markdown("Acompanhamento financeiro em tempo real com salvamento automático.")
 
-if "lancamentos" not in st.session_state:
+# ==================== PERSISTÊNCIA DE DADOS (ARQUIVOS CSV) =>> NUNCA MAIS SOMEM
+ARQUIVO_LANCAMENTOS = "lancamentos.csv"
+ARQUIVO_CARTOES = "cartoes.csv"
+ARQUIVO_CATEGORIAS = "categorias.csv"
+
+# 1. Lançamentos
+if os.path.exists(ARQUIVO_LANCAMENTOS):
+    st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
+else:
     st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
 
-if "categorias" not in st.session_state:
+# 2. Categorias
+if os.path.exists(ARQUIVO_CATEGORIAS):
+    df_cat = pd.read_csv(ARQUIVO_CATEGORIAS)
+    st.session_state.categorias = df_cat["Categoria"].tolist()
+else:
     st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Outros"]
 
-if "cartoes" not in st.session_state:
+# 3. Cartões
+if os.path.exists(ARQUIVO_CARTOES):
+    st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
+else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
+# Menu lateral
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
@@ -119,6 +136,7 @@ elif aba == "Cadastro (Form)":
             conta_final = novo_c_digitado.strip()
             novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 0.0, "Vencimento": 17}])
             st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
+            st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
     valor_total = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
     data_compra = st.date_input("Data da Compra", value=datetime.today())
@@ -130,6 +148,7 @@ elif aba == "Cadastro (Form)":
     if st.button("Salvar Lançamento", type="primary"):
         if cat_escolhida == "+ Incluir Nova Categoria..." and categoria_final not in st.session_state.categorias:
             st.session_state.categorias.append(categoria_final)
+            pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
 
         if descricao.strip() == "":
             st.warning("Preencha a descrição.")
@@ -165,13 +184,22 @@ elif aba == "Cadastro (Form)":
 
             df_novo = pd.DataFrame(novos_registros)
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
-            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
+            
+            # SALVA NO CSV AUTOMATICAMENTE
+            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+            st.success(f"{parcelas} lançamento(s) gerado(s) e salvos com sucesso!")
 
 elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos")
     df = st.session_state.lancamentos
     if not df.empty:
         st.dataframe(df, use_container_width=True)
+        
+        # Botão opcional para apagar tudo se precisar limpar
+        if st.button("🗑️ Limpar Todos os Lançamentos"):
+            st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
+            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+            st.rerun()
     else:
         st.write("Nenhum registro encontrado.")
 
@@ -188,6 +216,9 @@ elif aba == "Cartões":
             if nome_cartao.strip() != "":
                 novo_cartao = pd.DataFrame([{"Nome": nome_cartao, "Fechamento": dia_fechamento, "Limite": limite_disponivel, "Vencimento": dia_pagamento}])
                 st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_cartao], ignore_index=True)
+                
+                # SALVA NO CSV DE CARTÕES
+                st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
                 st.success("Cartão salvo com sucesso!")
 
     if not st.session_state.cartoes.empty:
@@ -199,6 +230,7 @@ elif aba == "Gerenciar Categorias":
     if st.button("Adicionar Categoria"):
         if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
             st.session_state.categorias.append(nova_cat)
-            st.success("Categoria adicionada!")
+            pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+            st.success("Categoria adicionada e salva!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
