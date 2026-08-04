@@ -29,7 +29,6 @@ else:
 if os.path.exists(ARQUIVO_CARTOES):
     st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
 else:
-    # Garantimos colunas robustas para o fechamento e vencimento
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
 # Função auxiliar para colorir números negativos de vermelho em DataFrames
@@ -204,7 +203,8 @@ elif aba == "Financial Indicators":
         meses = sorted(df_b["AnoMes"].unique())
         dados_indicadores = []
         
-        for m in meses:
+        # Pré-cálculo para o Coeficiente de Variação (CV) histórico acumulado até cada mês
+        for i, m in enumerate(meses):
             df_m = df_b[df_b["AnoMes"] == m]
             
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
@@ -212,14 +212,56 @@ elif aba == "Financial Indicators":
             
             debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             
-            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
-            
             base_income = income if income > 0 else 1.0
+            base_expense = expense if expense > 0 else 1.0
             
             exp_inc_ratio = (expense / base_income) * 100
             debt_inc_ratio = (debts / base_income) * 100
+            
+            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
             debt_cc_inc_ratio = ((debts + credit_card) / base_income) * 100
+            
+            # --- INDICADOR 1: Burn Rate e Runway ---
+            # Burn Rate mensal = Despesas - Receitas (se gasto maior que ganho, queima caixa)
+            net_cash_flow = income - expense
+            burn_rate = abs(net_cash_flow) if net_cash_flow < 0 else 0.0
+            
+            # Patrimônio líquido simulado/acumulado até o mês atual
+            df_ate_mes = df_b[df_b["AnoMes"] <= m]
+            inc_acum = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum()
+            exp_acum = df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
+            patrimonio_liquido_est = inc_acum - exp_acum
+            
+            if burn_rate > 0:
+                runway_meses = patrimonio_liquido_est / burn_rate
+                runway_str = f"{runway_meses:.1f} meses" if runway_meses > 0 else "0.0 meses (Caixa Negativo)"
+            else:
+                runway_str = "Infinito (Superávit)"
+                
+            burn_rate_str = f"R$ {burn_rate:,.2f}"
+
+            # --- INDICADOR 2: DSCR (Debt Service Coverage Ratio) ---
+            # Renda / Obrigações de Dívidas e Parcelamentos do mês
+            obrigacoes_mes = debts + credit_card
+            if obrigacoes_mes > 0:
+                dscr_val = income / obrigacoes_mes
+                dscr_str = f"{dscr_val:.2f}x"
+            else:
+                dscr_str = "Sem Dívidas/Cartão"
+
+            # --- INDICADOR 3: Coeficiente de Variação (CV) das Despesas ---
+            # Calculado usando a série histórica de despesas até o mês atual (Desvio Padrão / Média * 100)
+            df_historico_ate_mes = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
+            gastos_por_mes = df_historico_ate_mes.groupby("AnoMes")["Valor"].sum()
+            
+            if len(gastos_por_mes) > 1:
+                media_hist = gastos_por_mes.mean()
+                desv_hist = gastos_por_mes.std()
+                cv_val = (desv_hist / media_hist) * 100 if media_hist > 0 else 0.0
+                cv_str = f"{cv_val:.1f}%"
+            else:
+                cv_str = "N/A (Histórico Insuficiente)"
             
             dados_indicadores.append({
                 "Mês": m,
@@ -230,6 +272,63 @@ elif aba == "Financial Indicators":
             
         df_indicators = pd.DataFrame(dados_indicadores).set_index("Mês")
         st.dataframe(df_indicators, use_container_width=True)
+        
+        # --- TABELA EXCLUSIVA DOS 3 NOVOS INDICADORES SOLICITADOS ---
+        st.markdown("---")
+        st.markdown("### 🚀 Advanced Strategic Metrics (Burn Rate, DSCR & Coef. Variação)")
+        st.markdown("Visão estruturada com os meses na vertical e os três novos indicadores avançados na horizontal.")
+        
+        dados_avancados_3 = []
+        for m in meses:
+            df_m = df_b[df_b["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
+            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
+            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
+            
+            net_cash_flow = income - expense
+            burn_rate = abs(net_cash_flow) if net_cash_flow < 0 else 0.0
+            burn_rate_str = f"R$ {burn_rate:,.2f} (Queima)" if burn_rate > 0 else "R$ 0,00 (Sem Queima)"
+            
+            df_ate_mes = df_b[df_b["AnoMes"] <= m]
+            patrimonio_liquido_est = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
+            
+            if burn_rate > 0:
+                runway_meses = patrimonio_liquido_est / burn_rate
+                runway_str = f"{runway_meses:.1f} meses" if runway_meses > 0 else "0.0 meses"
+            else:
+                runway_str = "Infinito (Superávit)"
+                
+            burn_runway_final = f"{burn_rate_str} | Runway: {runway_str}"
+            
+            obrigacoes_mes = debts + credit_card
+            if obrigacoes_mes > 0:
+                dscr_val = income / obrigacoes_mes
+                dscr_final = f"{dscr_val:.2f}x (Seguro > 1.2)" if dscr_val >= 1.2 else f"{dscr_val:.2f}x (⚠️ Alerta < 1.2)"
+            else:
+                dscr_final = "N/A (Sem Dívidas/Cartão)"
+                
+            df_historico_ate_mes = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
+            gastos_por_mes = df_historico_ate_mes.groupby("AnoMes")["Valor"].sum()
+            if len(gastos_por_mes) > 1:
+                media_hist = gastos_por_mes.mean()
+                desv_hist = gastos_por_mes.std()
+                cv_val = (desv_hist / media_hist) * 100 if media_hist > 0 else 0.0
+                cv_final = f"{cv_val:.1f}%"
+            else:
+                cv_final = "N/A (Requer + de 1 mês)"
+                
+            dados_avancados_3.append({
+                "Mês": m,
+                "1. Burn Rate & Runway": burn_runway_final,
+                "2. DSCR (Cobertura da Dívida)": dscr_final,
+                "3. Coeficiente de Variação (CV)": cv_final
+            })
+            
+        df_adv_table = pd.DataFrame(dados_avancados_3).set_index("Mês")
+        st.dataframe(df_adv_table, use_container_width=True)
+        
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
 
@@ -243,7 +342,6 @@ elif aba == "Statistical Indicators":
         df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
         df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
         
-        # Monta tabela consolidada mensal por tipo
         pivot_mensal = df_b.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0)
         if "Receita" not in pivot_mensal.columns:
             pivot_mensal["Receita"] = 0.0
@@ -256,7 +354,6 @@ elif aba == "Statistical Indicators":
         pivot_mensal = pivot_mensal.reset_index().sort_values("AnoMes")
         
         if len(pivot_mensal) > 0:
-            # Tabela 1: Z-Score de Despesas
             valores_exp = pivot_mensal["Expense"]
             media_geral = valores_exp.mean()
             desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
@@ -291,7 +388,6 @@ elif aba == "Statistical Indicators":
             st.markdown("### 📌 Z-Score e Desvio Padrão Mensal (Expenses)")
             st.dataframe(df_statistical.style.map(colorir_negativos), use_container_width=True)
             
-            # --- TABELA SEPARADA: INDICADORES AVANÇADOS (SKEW, KURT, SLOPE) ---
             st.markdown("---")
             st.markdown("### 📈 Advanced Distribution Metrics (Skew, Kurtosis & Trend Slope)")
             
@@ -324,7 +420,6 @@ elif aba == "Statistical Indicators":
             df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
             st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
             
-            # --- GRÁFICO DE SINO (CURVA NORMAL DE PROBABILIDADE) ---
             st.markdown("---")
             st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
             st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão.")
@@ -412,7 +507,6 @@ elif aba == "Cadastro (Form)":
     conta_escolhida = st.selectbox("Account (Conta / Cartão)", lista_conta_opcao)
     conta_final = conta_escolhida
     
-    # Identifica se a conta escolhida é um cartão cadastrado para aplicar a inteligência de fechamento
     cartao_selecionado_row = None
     if not st.session_state.cartoes.empty and conta_final in st.session_state.cartoes["Nome"].values:
         cartao_selecionado_row = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_final].iloc[0]
@@ -421,7 +515,6 @@ elif aba == "Cadastro (Form)":
         novo_c_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
         if novo_c_digitado.strip() != "":
             conta_final = novo_c_digitado.strip()
-            # Padrão seguro com fechamento dia 10 e vencimento dia 17 caso crie na hora
             novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
             st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
             st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
@@ -443,12 +536,9 @@ elif aba == "Cadastro (Form)":
             st.warning("Preencha a descrição.")
         else:
             novos_registros = []
-            
-            # Inteligência de Cartão de Crédito (Fechamento e Fatura)
             dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row else 0
             
             for i in range(parcelas):
-                # Calcula a data base da parcela/ocorrência
                 if frequencia == "Mensal":
                     data_base_parcela = data_compra + relativedelta(months=i)
                 elif frequencia == "Quinzenal":
@@ -458,14 +548,11 @@ elif aba == "Cadastro (Form)":
                 else:
                     data_base_parcela = data_compra
 
-                # Regra de Fechamento de Fatura (se for cartão e a compra ocorrer após o dia de fechamento)
                 data_efetiva_lancamento = data_base_parcela
                 if cartao_selecionado_row is not None and dia_fechamento_cartao > 0:
                     if i == 0 and data_compra.day > dia_fechamento_cartao:
-                        # Joga a primeira parcela para o mês seguinte se comprou após o fechamento
                         data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
                     elif i > 0 and data_compra.day > dia_fechamento_cartao:
-                        # Mantém a progressão correta para as parcelas seguintes
                         data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
 
                 if modo_valor == "Dividir Total" and parcelas > 0:
@@ -475,7 +562,6 @@ elif aba == "Cadastro (Form)":
 
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
-                # Lançamento principal de consumo (afeta o Budget da Categoria)
                 novos_registros.append({
                     "Tipo": tipo,
                     "Status": status,
@@ -491,7 +577,6 @@ elif aba == "Cadastro (Form)":
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
             
-            # Atualiza e desconta do Limite Disponível do Cartão se aplicável
             if cartao_selecionado_row is not None:
                 nome_c_alvo = cartao_selecionado_row["Nome"]
                 idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == nome_c_alvo].index
