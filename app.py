@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
 import altair as alt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from scipy.stats import skew, kurtosis
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira")
@@ -283,7 +285,68 @@ elif aba == "Statistical Indicators":
                 })
                 
             df_statistical = pd.DataFrame(dados_stats).set_index("Mês")
+            st.markdown("### 📌 Z-Score e Desvio Padrão Mensal")
             st.dataframe(df_statistical.style.map(colorir_negativos), use_container_width=True)
+            
+            # --- TABELA SEPARADA: INDICADORES AVANÇADOS (SKEW, KURT, SLOPE) ---
+            st.markdown("---")
+            st.markdown("### 📈 Advanced Distribution Metrics (Skew, Kurtosis & Trend Slope)")
+            st.markdown("Análise avançada da distribuição dos gastos e tendência temporal da série financeira.")
+            
+            # Cálculos avançados globais para a série temporal
+            vals_array = valores.values
+            n_val = len(vals_array)
+            
+            if n_val >= 3:
+                skew_val = float(skew(vals_array, nan_policy='omit'))
+                kurt_val = float(kurtosis(vals_array, nan_policy='omit')) # excess kurtosis
+            else:
+                skew_val = 0.0
+                kurt_val = 0.0
+                
+            # Cálculo do Slope (Tendência linear dos gastos ao longo do tempo)
+            if n_val >= 2:
+                x_idx = np.arange(n_val)
+                slope, intercept = np.polyfit(x_idx, vals_array, 1)
+            else:
+                slope = 0.0
+                
+            # Interpretações Avançadas
+            if skew_val > 0.5:
+                skew_interp = "Assimetria Positiva: Gastos concentrados em patamares baixos com picos esporádicos altos."
+            elif skew_val < -0.5:
+                skew_interp = "Assimetria Negativa: Gastos concentrados em patamares mais altos com quedas pontuais."
+            else:
+                skew_interp = "Distribuição Simétrica: Padrão de gastos equilibrado ao redor da média."
+                
+            if kurt_val > 1.0:
+                kurt_interp = "Curtose Alta (Leptocúrtica): Presença marcante de valores extremos ou 'outliers' (gastos fora da curva)."
+            elif kurt_val < -1.0:
+                kurt_interp = "Curtose Baixa (Platicúrtica): Gastos muito estáveis e uniformes ao longo do tempo."
+            else:
+                kurt_interp = "Curtose Moderada (Mesocúrtica): Comportamento de volatilidade padrão."
+                
+            if slope > 0:
+                slope_interp = "Tendência de Alta (Slope Positivo): Seus gastos estão subindo gradativamente mês a mês."
+            elif slope < 0:
+                slope_interp = "Tendência de Queda (Slope Negativo): Seus gastos estão diminuindo de forma consistente ao longo do tempo."
+            else:
+                slope_interp = "Tendência Estável: Gastos sem variação direcional marcante."
+                
+            dados_avancados = []
+            for idx, row in df_exp_mes.iterrows():
+                m = row["AnoMes"]
+                dados_avancados.append({
+                    "Mês": m,
+                    "Skewness (Assimetria)": round(skew_val, 2),
+                    "Kurtosis (Curtose)": round(kurt_val, 2),
+                    "Trend Slope (Inclinação)": f"R$ {slope:,.2f}/mês",
+                    "Interpretação Avançada": f"Skew: {skew_interp} | Kurt: {kurt_interp} | Tendência: {slope_interp}"
+                })
+                
+            df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
+            st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
+            
         else:
             st.info("Nenhuma despesa em Budget registrada para gerar estatísticas.")
     else:
