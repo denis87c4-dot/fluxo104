@@ -233,8 +233,8 @@ elif aba == "Financial Indicators":
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
 
 elif aba == "Statistical Indicators":
-    st.subheader("📊 Statistical Indicators (Budget Expenses)")
-    st.markdown("Parâmetros estatísticos, desvio padrão, Z-score e interpretação automatizada mês a mês.")
+    st.subheader("📊 Statistical Indicators (Budget)")
+    st.markdown("Parâmetros estatísticos, desvio padrão, Z-score e distribuição de probabilidade em forma de sino.")
     
     df = st.session_state.lancamentos
     if not df.empty and not df[df["Status"] == "Budget"].empty:
@@ -242,27 +242,30 @@ elif aba == "Statistical Indicators":
         df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
         df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
         
-        # Agrupa despesas por mês
-        df_exp_mes = df_b[df_b["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
-        df_exp_mes = df_exp_mes.sort_values("AnoMes")
+        # Monta tabela consolidada mensal por tipo
+        pivot_mensal = df_b.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0)
+        if "Receita" not in pivot_mensal.columns:
+            pivot_mensal["Receita"] = 0.0
+        if "Despesa" not in pivot_mensal.columns:
+            pivot_mensal["Despesa"] = 0.0
+            
+        pivot_mensal = pivot_mensal.rename(columns={"Receita": "Income", "Despesa": "Expense"})
+        pivot_mensal["Cash Flow"] = pivot_mensal["Income"] - pivot_mensal["Expense"]
+        pivot_mensal["Acumulado"] = pivot_mensal["Cash Flow"].cumsum()
+        pivot_mensal = pivot_mensal.reset_index().sort_values("AnoMes")
         
-        if len(df_exp_mes) > 0:
-            valores = df_exp_mes["Valor"]
-            media_geral = valores.mean()
-            desvio_padrao = valores.std() if len(valores) > 1 else 0.0
+        if len(pivot_mensal) > 0:
+            # Tabela 1: Z-Score de Despesas (mantida conforme solicitado)
+            valores_exp = pivot_mensal["Expense"]
+            media_geral = valores_exp.mean()
+            desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
             
             dados_stats = []
-            for idx, row in df_exp_mes.iterrows():
+            for idx, row in pivot_mensal.iterrows():
                 m = row["AnoMes"]
-                val = row["Valor"]
+                val = row["Expense"]
+                z_score = (val - media_geral) / desvio_padrao if desvio_padrao > 0 else 0.0
                 
-                # Cálculo do Z-Score
-                if desvio_padrao > 0:
-                    z_score = (val - media_geral) / desvio_padrao
-                else:
-                    z_score = 0.0
-                
-                # Interpretação conjunta inteligente
                 if z_score > 1.5:
                     interpretacao = "⚠️ Alerta: Gastos muito acima da média histórica"
                 elif z_score > 0.5:
@@ -284,67 +287,104 @@ elif aba == "Statistical Indicators":
                 })
                 
             df_statistical = pd.DataFrame(dados_stats).set_index("Mês")
-            st.markdown("### 📌 Z-Score e Desvio Padrão Mensal")
+            st.markdown("### 📌 Z-Score e Desvio Padrão Mensal (Expenses)")
             st.dataframe(df_statistical.style.map(colorir_negativos), use_container_width=True)
             
             # --- TABELA SEPARADA: INDICADORES AVANÇADOS (SKEW, KURT, SLOPE) ---
             st.markdown("---")
             st.markdown("### 📈 Advanced Distribution Metrics (Skew, Kurtosis & Trend Slope)")
-            st.markdown("Análise avançada da distribuição dos gastos e tendência temporal da série financeira.")
             
-            # Cálculos avançados nativos via Pandas/Numpy (sem dependência externa scipy)
-            vals_array = valores.values
+            vals_array = valores_exp.values
             n_val = len(vals_array)
+            skew_val = float(pd.Series(vals_array).skew()) if n_val >= 3 else 0.0
+            kurt_val = float(pd.Series(vals_array).kurtosis()) if n_val >= 3 else 0.0
             
-            if n_val >= 3:
-                skew_val = float(pd.Series(vals_array).skew())
-                kurt_val = float(pd.Series(vals_array).kurtosis())
-            else:
-                skew_val = 0.0
-                kurt_val = 0.0
-                
-            # Cálculo do Slope (Tendência linear dos gastos ao longo do tempo)
             if n_val >= 2:
                 x_idx = np.arange(n_val)
                 slope, intercept = np.polyfit(x_idx, vals_array, 1)
             else:
                 slope = 0.0
                 
-            # Interpretações Avançadas
-            if skew_val > 0.5:
-                skew_interp = "Assimetria Positiva: Gastos concentrados em patamares baixos com picos esporádicos altos."
-            elif skew_val < -0.5:
-                skew_interp = "Assimetria Negativa: Gastos concentrados em patamares mais altos com quedas pontuais."
-            else:
-                skew_interp = "Distribuição Simétrica: Padrão de gastos equilibrado ao redor da média."
-                
-            if kurt_val > 1.0:
-                kurt_interp = "Curtose Alta (Leptocúrtica): Presença marcante de valores extremos ou 'outliers' (gastos fora da curva)."
-            elif kurt_val < -1.0:
-                kurt_interp = "Curtose Baixa (Platicúrtica): Gastos muito estáveis e uniformes ao longo do tempo."
-            else:
-                kurt_interp = "Curtose Moderada (Mesocúrtica): Comportamento de volatilidade padrão."
-                
-            if slope > 0:
-                slope_interp = "Tendência de Alta (Slope Positivo): Seus gastos estão subindo gradativamente mês a mês."
-            elif slope < 0:
-                slope_interp = "Tendência de Queda (Slope Negativo): Seus gastos estão diminuindo de forma consistente ao longo do tempo."
-            else:
-                slope_interp = "Tendência Estável: Gastos sem variação direcional marcante."
-                
+            skew_interp = "Assimetria Positiva" if skew_val > 0.5 else ("Assimetria Negativa" if skew_val < -0.5 else "Simétrica")
+            kurt_interp = "Curtose Alta (Leptocúrtica)" if kurt_val > 1.0 else ("Curtose Baixa" if kurt_val < -1.0 else "Moderada")
+            slope_interp = "Tendência de Alta" if slope > 0 else ("Tendência de Queda" if slope < 0 else "Estável")
+            
             dados_avancados = []
-            for idx, row in df_exp_mes.iterrows():
+            for idx, row in pivot_mensal.iterrows():
                 m = row["AnoMes"]
                 dados_avancados.append({
                     "Mês": m,
-                    "Skewness (Assimetria)": round(skew_val, 2),
-                    "Kurtosis (Curtose)": round(kurt_val, 2),
-                    "Trend Slope (Inclinação)": f"R$ {slope:,.2f}/mês",
+                    "Skewness": round(skew_val, 2),
+                    "Kurtosis": round(kurt_val, 2),
+                    "Trend Slope": f"R$ {slope:,.2f}/mês",
                     "Interpretação Avançada": f"Skew: {skew_interp} | Kurt: {kurt_interp} | Tendência: {slope_interp}"
                 })
                 
             df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
             st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
+            
+            # --- NOVO: GRÁFICO DE SINO (CURVA NORMAL DE PROBABILIDADE) ---
+            st.markdown("---")
+            st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
+            st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão (estilo NORM.DIST).")
+            
+            col_sel1, col_sel2 = st.columns([2, 2])
+            with col_sel1:
+                metrica_selecionada = st.selectbox("Escolha a Variável para Análise:", ["Expense", "Income", "Cash Flow", "Acumulado"])
+            with col_sel2:
+                mes_selecionado = st.selectbox("Escolha o Mês de Referência:", pivot_mensal["AnoMes"].tolist())
+                
+            # Extrai os valores da série escolhida
+            serie_dados = pivot_mensal[metrica_selecionada]
+            media_s = serie_dados.mean()
+            desvio_s = serie_dados.std() if len(serie_dados) > 1 else 1.0
+            if desvio_s == 0:
+                desvio_s = 1.0  # Evita divisão por zero se todos os valores forem iguais
+                
+            # Pega o valor exato do mês selecionado
+            val_mes_atual = float(pivot_mensal[pivot_mensal["AnoMes"] == mes_selecionado][metrica_selecionada].values[0])
+            
+            # Constrói a tabela de -3 até +3 desvios (exatamente como no Excel!)
+            z_steps = np.arange(-3.0, 3.1, 0.1)
+            bell_data = []
+            
+            for z in z_steps:
+                # X real = Média + (Z * Desvio Padrão)
+                x_val = media_s + (z * desvio_s)
+                # Fórmula da Distribuição Normal (PDF equivalente ao NORM.DIST no Excel com acumulado=Falso)
+                pdf_val = (1 / (desvio_s * np.sqrt(2 * np.pi))) * np.exp(-0.5 * (z ** 2))
+                
+                bell_data.append({
+                    "Z_Score": round(z, 1),
+                    "Valor_Real": x_val,
+                    "Probabilidade": pdf_val
+                })
+                
+            df_bell = pd.DataFrame(bell_data)
+            
+            # Cria o Gráfico de Sino com Altair
+            base_bell = alt.Chart(df_bell).encode(
+                x=alt.X('Valor_Real:Q', title=f'Valores de {metrica_selecionada} (R$)'),
+                y=alt.Y('Probabilidade:Q', title='Densidade de Probabilidade')
+            )
+            
+            curva_sino = base_bell.mark_area(
+                opacity=0.4,
+                color='#1f77b4',
+                line={'color': '#1f77b4', 'strokeWidth': 3}
+            ).properties(height=350)
+            
+            # Linha vertical indicando o ponto exato do mês selecionado
+            df_ponto = pd.DataFrame([{"Valor_Real": val_mes_atual, "Mes": mes_selecionado}])
+            linha_atual = alt.Chart(df_ponto).mark_rule(color='#ff4b4b', strokeWidth=3, strokeDash=[4, 4]).encode(
+                x='Valor_Real:Q',
+                tooltip=['Mes', 'Valor_Real']
+            )
+            
+            grafico_final_sino = (curva_sino + linha_atual).interactive()
+            st.altair_chart(grafico_final_sino, use_container_width=True)
+            
+            st.info(f"📍 **Análise do Mês ({meses} -> {mes_selecionado})**: O valor atual de **{metrica_selecionada}** é **R$ {val_mes_atual:,.2f}**. A média histórica é de **R$ {media_s:,.2f}** com desvio padrão de **R$ {desvio_s:,.2f}**.")
             
         else:
             st.info("Nenhuma despesa em Budget registrada para gerar estatísticas.")
