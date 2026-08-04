@@ -29,6 +29,7 @@ else:
 if os.path.exists(ARQUIVO_CARTOES):
     st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
 else:
+    # Garantimos colunas robustas para o fechamento e vencimento
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
 # Função auxiliar para colorir números negativos de vermelho em DataFrames
@@ -323,10 +324,10 @@ elif aba == "Statistical Indicators":
             df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
             st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
             
-            # --- NOVO: GRÁFICO DE SINO (CURVA NORMAL DE PROBABILIDADE) ---
+            # --- GRÁFICO DE SINO (CURVA NORMAL DE PROBABILIDADE) ---
             st.markdown("---")
             st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
-            st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão (estilo NORM.DIST).")
+            st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão.")
             
             col_sel1, col_sel2 = st.columns([2, 2])
             with col_sel1:
@@ -334,17 +335,14 @@ elif aba == "Statistical Indicators":
             with col_sel2:
                 mes_selecionado = st.selectbox("Escolha o Mês de Referência:", pivot_mensal["AnoMes"].tolist())
                 
-            # Extrai os valores da série escolhida
             serie_dados = pivot_mensal[metrica_selecionada]
             media_s = serie_dados.mean()
             desvio_s = serie_dados.std() if len(serie_dados) > 1 else 1.0
             if desvio_s == 0:
-                desvio_s = 1.0  # Evita divisão por zero se todos os valores forem iguais
+                desvio_s = 1.0 
                 
-            # Pega o valor exato do mês selecionado
             val_mes_atual = float(pivot_mensal[pivot_mensal["AnoMes"] == mes_selecionado][metrica_selecionada].values[0])
             
-            # Constrói a tabela de -3 até +3 desvios
             z_steps = np.arange(-3.0, 3.1, 0.1)
             bell_data = []
             
@@ -360,7 +358,6 @@ elif aba == "Statistical Indicators":
                 
             df_bell = pd.DataFrame(bell_data)
             
-            # Cria o Gráfico de Sino com Altair
             base_bell = alt.Chart(df_bell).encode(
                 x=alt.X('Valor_Real:Q', title=f'Valores de {metrica_selecionada} (R$)'),
                 y=alt.Y('Probabilidade:Q', title='Densidade de Probabilidade')
@@ -414,13 +411,21 @@ elif aba == "Cadastro (Form)":
     lista_conta_opcao = contas_base + ["+ Incluir Novo Cartão/Conta..."]
     conta_escolhida = st.selectbox("Account (Conta / Cartão)", lista_conta_opcao)
     conta_final = conta_escolhida
+    
+    # Identifica se a conta escolhida é um cartão cadastrado para aplicar a inteligência de fechamento
+    cartao_selecionado_row = None
+    if not st.session_state.cartoes.empty and conta_final in st.session_state.cartoes["Nome"].values:
+        cartao_selecionado_row = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_final].iloc[0]
+
     if conta_escolhida == "+ Incluir Novo Cartão/Conta...":
         novo_c_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
         if novo_c_digitado.strip() != "":
             conta_final = novo_c_digitado.strip()
-            novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 0.0, "Vencimento": 17}])
+            # Padrão seguro com fechamento dia 10 e vencimento dia 17 caso crie na hora
+            novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
             st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
             st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+            cartao_selecionado_row = novo_c_df.iloc[0]
 
     valor_total = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
     data_compra = st.date_input("Data da Compra", value=datetime.today())
@@ -438,15 +443,30 @@ elif aba == "Cadastro (Form)":
             st.warning("Preencha a descrição.")
         else:
             novos_registros = []
+            
+            # Inteligência de Cartão de Crédito (Fechamento e Fatura)
+            dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row else 0
+            
             for i in range(parcelas):
+                # Calcula a data base da parcela/ocorrência
                 if frequencia == "Mensal":
-                    data_parcela = data_compra + relativedelta(months=i)
+                    data_base_parcela = data_compra + relativedelta(months=i)
                 elif frequencia == "Quinzenal":
-                    data_parcela = data_compra + relativedelta(weeks=2*i)
+                    data_base_parcela = data_compra + relativedelta(weeks=2*i)
                 elif frequencia == "Anual":
-                    data_parcela = data_compra + relativedelta(years=i)
+                    data_base_parcela = data_compra + relativedelta(years=i)
                 else:
-                    data_parcela = data_compra
+                    data_base_parcela = data_compra
+
+                # Regra de Fechamento de Fatura (se for cartão e a compra ocorrer após o dia de fechamento)
+                data_efetiva_lancamento = data_base_parcela
+                if cartao_selecionado_row is not None and dia_fechamento_cartao > 0:
+                    if i == 0 and data_compra.day > dia_fechamento_cartao:
+                        # Joga a primeira parcela para o mês seguinte se comprou após o fechamento
+                        data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
+                    elif i > 0 and data_compra.day > dia_fechamento_cartao:
+                        # Mantém a progressão correta para as parcelas seguintes
+                        data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
 
                 if modo_valor == "Dividir Total" and parcelas > 0:
                     valor_parcela = valor_total / parcelas
@@ -455,6 +475,7 @@ elif aba == "Cadastro (Form)":
 
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
+                # Lançamento principal de consumo (afeta o Budget da Categoria)
                 novos_registros.append({
                     "Tipo": tipo,
                     "Status": status,
@@ -462,14 +483,25 @@ elif aba == "Cadastro (Form)":
                     "Categoria": categoria_final,
                     "Conta": conta_final,
                     "Valor": round(valor_parcela, 2),
-                    "Data": str(data_parcela),
+                    "Data": str(data_efetiva_lancamento),
                     "Parcela": f"{i+1}/{parcelas}"
                 })
 
             df_novo = pd.DataFrame(novos_registros)
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
-            st.success(f"{parcelas} lançamento(s) gerado(s) e salvos com sucesso!")
+            
+            # Atualiza e desconta do Limite Disponível do Cartão se aplicável
+            if cartao_selecionado_row is not None:
+                nome_c_alvo = cartao_selecionado_row["Nome"]
+                idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == nome_c_alvo].index
+                if not idx_cartao.empty:
+                    limite_atual = float(st.session_state.cartoes.loc[idx_cartao[0], "Limite"])
+                    novo_limite = max(0.0, limite_atual - valor_total)
+                    st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
+                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+
+            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso! Regras de fechamento e limite aplicadas.")
 
 elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos")
@@ -490,13 +522,18 @@ elif aba == "Cartões":
     with st.form("form_cartao"):
         nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Visa Itaú...")
         dia_fechamento = st.number_input("Dia de Fechamento da Fatura", min_value=1, max_value=31, value=10)
-        limite_disponivel = st.number_input("Limite Disponível (R$)", min_value=0.0, format="%.2f")
+        limite_disponivel = st.number_input("Limite Disponível (R$)", min_value=0.0, format="%.2f", value=1000.0)
         dia_pagamento = st.number_input("Dia de Vencimento / Pagamento", min_value=1, max_value=31, value=17)
         salvar_cartao = st.form_submit_button("Salvar Cartão")
         
         if salvar_cartao:
             if nome_cartao.strip() != "":
-                novo_cartao = pd.DataFrame([{"Nome": nome_cartao, "Fechamento": dia_fechamento, "Limite": limite_disponivel, "Vencimento": dia_pagamento}])
+                novo_cartao = pd.DataFrame([{
+                    "Nome": nome_cartao, 
+                    "Fechamento": int(dia_fechamento), 
+                    "Limite": float(limite_disponivel), 
+                    "Vencimento": int(dia_pagamento)
+                }])
                 st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_cartao], ignore_index=True)
                 st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
                 st.success("Cartão salvo com sucesso!")
