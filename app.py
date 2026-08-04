@@ -41,18 +41,14 @@ if aba == "Dashboard":
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         
-        # Pega o ano e mês atuais
         ano_atual = datetime.today().year
         mes_atual = datetime.today().month
         
-        # Filtro estrito para o MÊS ATUAL
         df_mes_atual = df[(df["Data"].dt.year == ano_atual) & (df["Data"].dt.month == mes_atual)]
         
-        # Valores gerais efetivados do mês atual
         receitas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Efetivado")]["Valor"].sum()
         despesas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Efetivado")]["Valor"].sum()
         
-        # Budget APENAS DO MÊS ATUAL
         budget_despesas = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         
@@ -77,7 +73,7 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Comprometimento do Budget (Considerando APENAS o mês atual)
+    # Comprometimento do Budget
     st.markdown("### 🎯 Comprometimento da Renda (Budget - Mês Atual)")
     renda_base = budget_receitas if budget_receitas > 0 else 1.0
     comprometimento = min((budget_despesas / renda_base) * 100, 100.0)
@@ -91,9 +87,9 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # 1. CASH FLOW POR ACCOUNT (Considerando APENAS o mês atual)
+    # 1. CASH FLOW POR ACCOUNT (Mês Atual em R$)
     st.markdown("### 🏛️ Cash Flow por Account (Mês Atual)")
-    st.markdown("Saldo detalhado por conta considerando o período atual.")
+    st.markdown("Saldo detalhado por conta no período atual.")
     if not df_mes_atual.empty:
         cash_flow = df_mes_atual.groupby(["Conta", "Tipo"])["Valor"].sum().unstack(fill_value=0.0)
         if "Receita" not in cash_flow.columns:
@@ -102,16 +98,21 @@ if aba == "Dashboard":
             cash_flow["Despesa"] = 0.0
         cash_flow["Saldo Líquido"] = cash_flow["Receita"] - cash_flow["Despesa"]
         
-        st.dataframe(cash_flow[["Receita", "Despesa", "Saldo Líquido"]], use_container_width=True)
+        # Formatação para Reais (R$)
+        cash_flow_fmt = cash_flow.copy()
+        for col in cash_flow_fmt.columns:
+            cash_flow_fmt[col] = cash_flow_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+            
+        st.dataframe(cash_flow_fmt, use_container_width=True)
         st.bar_chart(cash_flow["Saldo Líquido"])
     else:
         st.info("Nenhuma conta movimentada neste mês atual.")
 
     st.markdown("---")
 
-    # 2. BUDGET: INCOME X EXPENSES (Comparativo Mensal)
+    # 2. BUDGET: INCOME X EXPENSES (Comparativo Mensal + Cash Flow + Acumulado em R$)
     st.markdown("### 📊 Budget: Income x Expenses (Comparativo Mensal)")
-    st.markdown("Visão planejada mês a mês entre Budget de Receitas e Despesas.")
+    st.markdown("Visão planejada mês a mês com Cash Flow e Acumulado.")
     
     if not df.empty and not df[df["Status"] == "Budget"].empty:
         df_budget = df[df["Status"] == "Budget"].copy()
@@ -125,7 +126,16 @@ if aba == "Dashboard":
         
         budget_mensal = budget_mensal.rename(columns={"Receita": "Budget Receitas", "Despesa": "Budget Despesas"})
         
-        st.dataframe(budget_mensal, use_container_width=True)
+        # Criação das colunas de Cash Flow do Mês e Acumulado baseadas no Budget
+        budget_mensal["Cash Flow Mês"] = budget_mensal["Budget Receitas"] - budget_mensal["Budget Despesas"]
+        budget_mensal["Acumulado"] = budget_mensal["Cash Flow Mês"].cumsum()
+        
+        # Formata todas as colunas para padrão de Moeda (R$) na exibição
+        budget_mensal_fmt = budget_mensal.copy()
+        for col in budget_mensal_fmt.columns:
+            budget_mensal_fmt[col] = budget_mensal_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+            
+        st.dataframe(budget_mensal_fmt, use_container_width=True)
         st.bar_chart(budget_mensal[["Budget Receitas", "Budget Despesas"]])
     else:
         st.info("Nenhum registro de Budget cadastrado para o comparativo.")
