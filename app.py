@@ -1,4 +1,26 @@
-elif aba == "Dashboard":
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
+st.title("💰 Fluxo104 - Gestão Financeira")
+st.markdown("Acompanhamento financeiro em tempo real.")
+
+# Inicializar estados
+if "lancamentos" not in st.session_state:
+    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
+
+if "categorias" not in st.session_state:
+    st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Outros"]
+
+if "cartoes" not in st.session_state:
+    st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
+
+# Menu lateral
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+
+if aba == "Dashboard":
     st.subheader("📊 Dashboard Financeiro")
     
     df = st.session_state.lancamentos
@@ -10,7 +32,8 @@ elif aba == "Dashboard":
         budget_despesas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget")]["Valor"].sum()
         budget_receitas = df[(df["Tipo"] == "Receita") & (df["Status"] == "Budget")]["Valor"].sum()
         
-        hoje_str = datetime.today().strftime('%Y-%m-%d')
+        # Simulação de Despesas Vencidas (datas passadas com status Budget)
+-       hoje_str = datetime.today().strftime('%Y-%m-%d')
         despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_str)]["Valor"].sum()
     else:
         receitas_mes = 0.0
@@ -19,7 +42,7 @@ elif aba == "Dashboard":
         budget_receitas = 0.0
         despesas_vencidas = 0.0
 
-    # Linha 1: Cards de Métricas Principais (Igual aos prints)
+    # Layout de Cards estilo o seu Print
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta="Total de entradas no período")
@@ -30,7 +53,7 @@ elif aba == "Dashboard":
 
     st.markdown("---")
 
-    # Linha 2: Comprometimento do Budget
+    # Comprometimento do Budget (Baseado no seu print)
     st.markdown("### 🎯 Comprometimento da Renda (Budget)")
     st.markdown("Despesas planejadas (Budget) do mês atual em relação à Renda.")
     
@@ -46,7 +69,7 @@ elif aba == "Dashboard":
 
     st.markdown("---")
 
-    # Linha 3: Maiores Despesas por Categoria & Cash Flow por Account
+    # Seções de Maiores Despesas e Cash Flow
     col_d1, col_d2 = st.columns(2)
     
     with col_d1:
@@ -69,10 +92,129 @@ elif aba == "Dashboard":
             st.info("Nenhuma conta movimentada neste mês.")
 
     st.markdown("---")
-    
-    # Linha 4: Últimas Transações Recentes
     st.markdown("### 🕒 Últimas Transações Recentes")
     if not df.empty:
         st.dataframe(df.tail(5), use_container_width=True)
     else:
         st.write("Nenhuma transação recente.")
+
+elif aba == "Cadastro (Form)":
+    st.subheader("Novo Registro (Form)")
+    st.markdown("Preencha os campos abaixo para cadastrar uma nova movimentação.")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
+    with col_b:
+        status = st.selectbox("Status / Fase", ["Budget", "Efetivado"])
+        
+    descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Debts...")
+    
+    # Categoria dinâmica
+    lista_cat_opcao = st.session_state.categorias + ["+ Incluir Nova Categoria..."]
+    cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
+    categoria_final = cat_escolhida
+    if cat_escolhida == "+ Incluir Nova Categoria...":
+        nova_cat_digitada = st.text_input("Digite o nome da nova categoria:")
+        if nova_cat_digitada.strip() != "":
+            categoria_final = nova_cat_digitada.strip()
+
+    # Conta / Cartão dinâmica
+    contas_base = ["Cash husband", "Nubank"]
+    if not st.session_state.cartoes.empty:
+        contas_base.extend(st.session_state.cartoes["Nome"].tolist())
+    lista_conta_opcao = contas_base + ["+ Incluir Novo Cartão/Conta..."]
+    conta_escolhida = st.selectbox("Account (Conta / Cartão)", lista_conta_opcao)
+    conta_final = conta_escolhida
+    if conta_escolhida == "+ Incluir Novo Cartão/Conta...":
+        novo_c_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
+        if novo_c_digitado.strip() != "":
+            conta_final = novo_c_digitado.strip()
+            novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 0.0, "Vencimento": 17}])
+            st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
+
+    valor_total = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
+    data_compra = st.date_input("Data da Compra", value=datetime.today())
+    
+    parcelas = st.number_input("Installments (Parcelas)", min_value=1, max_value=48, value=1)
+    frequencia = st.selectbox("Frequência", ["Mensal", "Quinzenal", "Anual", "Única"])
+    modo_valor = st.selectbox("Modo de Valor", ["Dividir Total", "Replicar Integral"])
+    
+    if st.button("Salvar Lançamento", type="primary"):
+        if cat_escolhida == "+ Incluir Nova Categoria..." and categoria_final not in st.session_state.categorias:
+            st.session_state.categorias.append(categoria_final)
+
+        if descricao.strip() == "":
+            st.warning("Preencha a descrição.")
+        else:
+            novos_registros = []
+            for i in range(parcelas):
+                if frequencia == "Mensal":
+                    data_parcela = data_compra + relativedelta(months=i)
+                elif frequencia == "Quinzenal":
+                    data_parcela = data_compra + relativedelta(weeks=2*i)
+                elif frequencia == "Anual":
+                    data_parcela = data_compra + relativedelta(years=i)
+                else:
+                    data_parcela = data_compra
+
+                if modo_valor == "Dividir Total" and parcelas > 0:
+                    valor_parcela = valor_total / parcelas
+                else:
+                    valor_parcela = valor_total
+
+                desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
+
+                novos_registros.append({
+                    "Tipo": tipo,
+                    "Status": status,
+                    "Descricao": desc_formatada,
+                    "Categoria": categoria_final,
+                    "Conta": conta_final,
+                    "Valor": round(valor_parcela, 2),
+                    "Data": str(data_parcela),
+                    "Parcela": f"{i+1}/{parcelas}"
+                })
+
+            df_novo = pd.DataFrame(novos_registros)
+            st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
+            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
+
+elif aba == "Lançamentos":
+    st.subheader("Lista de Lançamentos")
+    df = st.session_state.lancamentos
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.write("Nenhum registro encontrado.")
+
+elif aba == "Cartões":
+    st.subheader("💳 Cadastro de Cartões e Contas")
+    with st.form("form_cartao"):
+        nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Visa Itaú...")
+        dia_fechamento = st.number_input("Dia de Fechamento da Fatura", min_value=1, max_value=31, value=10)
+        limite_disponivel = st.number_input("Limite Disponível (R$)", min_value=0.0, format="%.2f")
+        dia_pagamento = st.number_input("Dia de Vencimento / Pagamento", min_value=1, max_value=31, value=17)
+        salvar_cartao = st.form_submit_button("Salvar Cartão")
+        
+        if salvar_cartao:
+            if nome_cartao.strip() != "":
+                novo_cartao = pd.DataFrame([{"Nome": nome_cartao, "Fechamento": dia_fechamento, "Limite": limite_disponivel, "Vencimento": dia_pagamento}])
+                st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_cartao], ignore_index=True)
+                st.success("Cartão salvo com sucesso!")
+
+    if not st.session_state.cartoes.empty:
+        st.dataframe(st.session_state.cartoes, use_container_width=True)
+
+elif aba == "Gerenciar Categorias":
+    st.subheader("📂 Gerenciamento de Categorias")
+    nova_cat = st.text_input("Nome da Nova Categoria")
+    if st.button("Adicionar Categoria"):
+        if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
+            st.session_state.categorias.append(nova_cat)
+            st.success("Categoria adicionada!")
+    for cat in st.session_state.categorias:
+        st.write(f"- {cat}")
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray;'>Fluxo104 © 2026</p>", unsafe_allow_html=True)
