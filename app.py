@@ -201,82 +201,10 @@ elif aba == "Financial Indicators":
         df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
         
         meses = sorted(df_b["AnoMes"].unique())
-        dados_indicadores = []
         
-        # Pré-cálculo para o Coeficiente de Variação (CV) histórico acumulado até cada mês
-        for i, m in enumerate(meses):
-            df_m = df_b[df_b["AnoMes"] == m]
-            
-            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
-            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            
-            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
-            
-            base_income = income if income > 0 else 1.0
-            base_expense = expense if expense > 0 else 1.0
-            
-            exp_inc_ratio = (expense / base_income) * 100
-            debt_inc_ratio = (debts / base_income) * 100
-            
-            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
-            debt_cc_inc_ratio = ((debts + credit_card) / base_income) * 100
-            
-            # --- INDICADOR 1: Burn Rate e Runway ---
-            # Burn Rate mensal = Despesas - Receitas (se gasto maior que ganho, queima caixa)
-            net_cash_flow = income - expense
-            burn_rate = abs(net_cash_flow) if net_cash_flow < 0 else 0.0
-            
-            # Patrimônio líquido simulado/acumulado até o mês atual
-            df_ate_mes = df_b[df_b["AnoMes"] <= m]
-            inc_acum = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum()
-            exp_acum = df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
-            patrimonio_liquido_est = inc_acum - exp_acum
-            
-            if burn_rate > 0:
-                runway_meses = patrimonio_liquido_est / burn_rate
-                runway_str = f"{runway_meses:.1f} meses" if runway_meses > 0 else "0.0 meses (Caixa Negativo)"
-            else:
-                runway_str = "Infinito (Superávit)"
-                
-            burn_rate_str = f"R$ {burn_rate:,.2f}"
-
-            # --- INDICADOR 2: DSCR (Debt Service Coverage Ratio) ---
-            # Renda / Obrigações de Dívidas e Parcelamentos do mês
-            obrigacoes_mes = debts + credit_card
-            if obrigacoes_mes > 0:
-                dscr_val = income / obrigacoes_mes
-                dscr_str = f"{dscr_val:.2f}x"
-            else:
-                dscr_str = "Sem Dívidas/Cartão"
-
-            # --- INDICADOR 3: Coeficiente de Variação (CV) das Despesas ---
-            # Calculado usando a série histórica de despesas até o mês atual (Desvio Padrão / Média * 100)
-            df_historico_ate_mes = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
-            gastos_por_mes = df_historico_ate_mes.groupby("AnoMes")["Valor"].sum()
-            
-            if len(gastos_por_mes) > 1:
-                media_hist = gastos_por_mes.mean()
-                desv_hist = gastos_por_mes.std()
-                cv_val = (desv_hist / media_hist) * 100 if media_hist > 0 else 0.0
-                cv_str = f"{cv_val:.1f}%"
-            else:
-                cv_str = "N/A (Histórico Insuficiente)"
-            
-            dados_indicadores.append({
-                "Mês": m,
-                "Expense / Income Ratio": f"{exp_inc_ratio:.1f}%",
-                "Debts / Income Ratio": f"{debt_inc_ratio:.1f}%",
-                "(Debts + Credit Card) / Income": f"{debt_cc_inc_ratio:.1f}%"
-            })
-            
-        df_indicators = pd.DataFrame(dados_indicadores).set_index("Mês")
-        st.dataframe(df_indicators, use_container_width=True)
-        
-        # --- TABELA EXCLUSIVA DOS 3 NOVOS INDICADORES SOLICITADOS ---
-        st.markdown("---")
-        st.markdown("### 🚀 Advanced Strategic Metrics (Burn Rate, DSCR & Coef. Variação)")
-        st.markdown("Visão estruturada com os meses na vertical e os três novos indicadores avançados na horizontal.")
+        # --- TABELA 1: INDICADORES 1, 2 e 3 (Burn Rate/Runway, DSCR, CV) ---
+        st.markdown("### 🚀 Strategic Metrics (1 a 3)")
+        st.markdown("Visão estruturada com os meses na vertical e os indicadores 1, 2 e 3 na horizontal.")
         
         dados_avancados_3 = []
         for m in meses:
@@ -328,6 +256,51 @@ elif aba == "Financial Indicators":
             
         df_adv_table = pd.DataFrame(dados_avancados_3).set_index("Mês")
         st.dataframe(df_adv_table, use_container_width=True)
+
+        st.markdown("---")
+
+        # --- TABELA 2: INDICADORES 4, 5 e 6 (Cash Ratio, Net Savings Rate, VaR) ---
+        st.markdown("### 🛡️ Liquidity, Savings & Risk Metrics (4 a 6)")
+        st.markdown("Indicadores avançados de Liquidez Imediata, Taxa de Poupança Líquida e VaR (Value at Risk - 95%).")
+
+        dados_avancados_4_6 = []
+        for m in meses:
+            df_m = df_b[df_b["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
+            
+            # 4. Índice de Liquidez Imediata (Cash Ratio)
+            # Considera contas líquidas (excluindo cartões) vs despesas do mês
+            contas_liquidas = df_m[(df_m["Tipo"] == "Receita") & (~df_m["Conta"].isin(st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []))]["Valor"].sum()
+            cash_ratio = (contas_liquidas / expense) if expense > 0 else 0.0
+            cash_ratio_str = f"{cash_ratio:.2f}x (Coberto)" if cash_ratio >= 1.0 else f"{cash_ratio:.2f}x (⚠️ Ajuste Caixa)"
+
+            # 5. Taxa de Poupança Líquida (Net Savings Rate)
+            net_savings = ((income - expense) / income * 100) if income > 0 else 0.0
+            net_savings_str = f"{net_savings:.1f}%"
+
+            # 6. Value at Risk (VaR 95% Pessoal)
+            # Baseado na distribuição normal do histórico de despesas até o mês atual (Média + 1.645 * Desvio Padrão)
+            df_hist_exp = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
+            series_exp_hist = df_hist_exp.groupby("AnoMes")["Valor"].sum()
+            
+            if len(series_exp_hist) > 1:
+                media_exp = series_exp_hist.mean()
+                desv_exp = series_exp_hist.std()
+                var_95 = media_exp + (1.645 * desv_exp)
+                var_str = f"R$ {var_95:,.2f}"
+            else:
+                var_str = "R$ 0,00 (Histórico Insuficiente)"
+
+            dados_avancados_4_6.append({
+                "Mês": m,
+                "4. Cash Ratio (Liquidez Imediata)": cash_ratio_str,
+                "5. Net Savings Rate (Taxa de Poupança)": net_savings_str,
+                "6. Value at Risk (VaR 95%)": var_str
+            })
+
+        df_adv_table_2 = pd.DataFrame(dados_avancados_4_6).set_index("Mês")
+        st.dataframe(df_adv_table_2, use_container_width=True)
         
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
