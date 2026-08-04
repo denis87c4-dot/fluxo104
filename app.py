@@ -29,6 +29,21 @@ if os.path.exists(ARQUIVO_CARTOES):
 else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
+# Função auxiliar para colorir números negativos de vermelho em DataFrames
+def colorir_negativos(val):
+    # Se for string formatada em R$, tenta converter de volta para float para verificar se é negativo
+    if isinstance(val, str) and "R$" in val:
+        try:
+            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").strip()
+            val_num = float(limpo)
+            if val_num < 0:
+                return 'color: #ff4b4b; font-weight: bold;'
+        except:
+            pass
+    elif isinstance(val, (int, float)) and val < 0:
+        return 'color: #ff4b4b; font-weight: bold;'
+    return ''
+
 # Menu lateral
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
@@ -98,12 +113,11 @@ if aba == "Dashboard":
             cash_flow["Despesa"] = 0.0
         cash_flow["Saldo Líquido"] = cash_flow["Receita"] - cash_flow["Despesa"]
         
-        # Formatação para Reais (R$)
         cash_flow_fmt = cash_flow.copy()
         for col in cash_flow_fmt.columns:
             cash_flow_fmt[col] = cash_flow_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
-        st.dataframe(cash_flow_fmt, use_container_width=True)
+        st.dataframe(cash_flow_fmt.style.map(colorir_negativos), use_container_width=True)
         st.bar_chart(cash_flow["Saldo Líquido"])
     else:
         st.info("Nenhuma conta movimentada neste mês atual.")
@@ -126,16 +140,14 @@ if aba == "Dashboard":
         
         budget_mensal = budget_mensal.rename(columns={"Receita": "Budget Receitas", "Despesa": "Budget Despesas"})
         
-        # Criação das colunas de Cash Flow do Mês e Acumulado baseadas no Budget
         budget_mensal["Cash Flow Mês"] = budget_mensal["Budget Receitas"] - budget_mensal["Budget Despesas"]
         budget_mensal["Acumulado"] = budget_mensal["Cash Flow Mês"].cumsum()
         
-        # Formata todas as colunas para padrão de Moeda (R$) na exibição
         budget_mensal_fmt = budget_mensal.copy()
         for col in budget_mensal_fmt.columns:
             budget_mensal_fmt[col] = budget_mensal_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
-        st.dataframe(budget_mensal_fmt, use_container_width=True)
+        st.dataframe(budget_mensal_fmt.style.map(colorir_negativos), use_container_width=True)
         st.bar_chart(budget_mensal[["Budget Receitas", "Budget Despesas"]])
     else:
         st.info("Nenhum registro de Budget cadastrado para o comparativo.")
@@ -155,7 +167,9 @@ if aba == "Dashboard":
     # Últimas Transações Recentes
     st.markdown("### 🕒 Últimas Transações Recentes")
     if not df.empty:
-        st.dataframe(df.sort_values(by="Data", ascending=False).head(5), use_container_width=True)
+        df_recentes = df.sort_values(by="Data", ascending=False).head(5).copy()
+        df_recentes["Valor"] = df_recentes["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_recentes.style.map(colorir_negativos), use_container_width=True)
     else:
         st.info("Nenhuma transação recente.")
 
@@ -246,7 +260,9 @@ elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos")
     df = st.session_state.lancamentos
     if not df.empty:
-        st.dataframe(df, use_container_width=True)
+        df_lanc_fmt = df.copy()
+        df_lanc_fmt["Valor"] = df_lanc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_lanc_fmt.style.map(colorir_negativos), use_container_width=True)
         if st.button("🗑️ Limpar Todos os Lançamentos"):
             st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
@@ -271,7 +287,10 @@ elif aba == "Cartões":
                 st.success("Cartão salvo com sucesso!")
 
     if not st.session_state.cartoes.empty:
-        st.dataframe(st.session_state.cartoes, use_container_width=True)
+        df_cartoes_fmt = st.session_state.cartoes.copy()
+        if "Limite" in df_cartoes_fmt.columns:
+            df_cartoes_fmt["Limite"] = df_cartoes_fmt["Limite"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_cartoes_fmt.style.map(colorir_negativos), use_container_width=True)
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
