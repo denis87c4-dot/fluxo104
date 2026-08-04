@@ -67,6 +67,7 @@ if aba == "Dashboard":
         budget_despesas = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         
+        # Despesas Vencidas: Despesas com status Budget e data anterior a hoje (incluindo parceladas ou isoladas)
         hoje_dt = pd.to_datetime(datetime.today().date())
         despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_dt)]["Valor"].sum()
     else:
