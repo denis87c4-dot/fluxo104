@@ -7,7 +7,6 @@ st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira")
 st.markdown("Acompanhamento financeiro em tempo real.")
 
-# Inicializar estados
 if "lancamentos" not in st.session_state:
     st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
 
@@ -17,90 +16,22 @@ if "categorias" not in st.session_state:
 if "cartoes" not in st.session_state:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
-# Menu lateral
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
-    st.subheader("📊 Dashboard Financeiro")
-    
+    st.subheader("Visão Geral")
     df = st.session_state.lancamentos
-    
-    # Cálculos gerais
-    if not df.empty:
-        receitas_mes = df[(df["Tipo"] == "Receita") & (df["Status"] == "Efetivado")]["Valor"].sum()
-        despesas_mes = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Efetivado")]["Valor"].sum()
-        budget_despesas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget")]["Valor"].sum()
-        budget_receitas = df[(df["Tipo"] == "Receita") & (df["Status"] == "Budget")]["Valor"].sum()
-        
-        # Simulação de Despesas Vencidas (datas passadas com status Budget)
--       hoje_str = datetime.today().strftime('%Y-%m-%d')
-        despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_str)]["Valor"].sum()
-    else:
-        receitas_mes = 0.0
-        despesas_mes = 0.0
-        budget_despesas = 0.0
-        budget_receitas = 0.0
-        despesas_vencidas = 0.0
+    total_receitas = df[df["Tipo"] == "Receita"]["Valor"].sum() if not df.empty else 0.0
+    total_despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum() if not df.empty else 0.0
+    saldo = total_receitas - total_despesas
 
-    # Layout de Cards estilo o seu Print
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta="Total de entradas no período")
-    with col2:
-        st.metric("📉 DESPESAS DO MÊS", f"R$ {despesas_mes:,.2f}", delta="Total de saídas no período")
-    with col3:
-        st.metric("⚠️ DESPESAS VENCIDAS", f"R$ {despesas_vencidas:,.2f}", delta="Budget pendente anterior")
-
-    st.markdown("---")
-
-    # Comprometimento do Budget (Baseado no seu print)
-    st.markdown("### 🎯 Comprometimento da Renda (Budget)")
-    st.markdown("Despesas planejadas (Budget) do mês atual em relação à Renda.")
-    
-    renda_base = budget_receitas if budget_receitas > 0 else 1.0
-    comprometimento = min((budget_despesas / renda_base) * 100, 100.0)
-    
-    col_b1, col_b2 = st.columns(2)
-    col_b1.write(f"**Renda do Mês (Budget Income):** R$ {budget_receitas:,.2f}")
-    col_b2.write(f"**Total Planejado (Budget Expenses):** R$ {budget_despesas:,.2f}")
-    
-    st.progress(int(comprometimento))
-    st.write(f"Comprometimento do Budget: **{comprometimento:.1f}%**")
-
-    st.markdown("---")
-
-    # Seções de Maiores Despesas e Cash Flow
-    col_d1, col_d2 = st.columns(2)
-    
-    with col_d1:
-        st.markdown("### 🔥 Maiores Despesas por Categoria")
-        st.markdown("Onde seu dinheiro está indo neste mês.")
-        if not df.empty and not df[df["Tipo"] == "Despesa"].empty:
-            df_despesas = df[df["Tipo"] == "Despesa"]
-            cat_grouped = df_despesas.groupby("Categoria")["Valor"].sum().reset_index()
-            st.dataframe(cat_grouped, use_container_width=True)
-        else:
-            st.info("Nenhuma despesa efetivada neste mês.")
-
-    with col_d2:
-        st.markdown("### 🏛️ Cash Flow por Account (Mês Atual)")
-        st.markdown("Saldo detalhado por conta no período.")
-        if not df.empty:
-            conta_grouped = df.groupby("Conta")["Valor"].sum().reset_index()
-            st.dataframe(conta_grouped, use_container_width=True)
-        else:
-            st.info("Nenhuma conta movimentada neste mês.")
-
-    st.markdown("---")
-    st.markdown("### 🕒 Últimas Transações Recentes")
-    if not df.empty:
-        st.dataframe(df.tail(5), use_container_width=True)
-    else:
-        st.write("Nenhuma transação recente.")
+    col1.metric("Saldo em Caixa", f"R$ {saldo:,.2f}")
+    col2.metric("Receitas do Mês", f"R$ {total_receitas:,.2f}")
+    col3.metric("Despesas do Mês", f"R$ {total_despesas:,.2f}")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
-    st.markdown("Preencha os campos abaixo para cadastrar uma nova movimentação.")
     
     col_a, col_b = st.columns(2)
     with col_a:
@@ -110,7 +41,7 @@ elif aba == "Cadastro (Form)":
         
     descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Debts...")
     
-    # Categoria dinâmica
+    # Categorias com opção de inclusão dinâmica
     lista_cat_opcao = st.session_state.categorias + ["+ Incluir Nova Categoria..."]
     cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
     categoria_final = cat_escolhida
@@ -119,7 +50,7 @@ elif aba == "Cadastro (Form)":
         if nova_cat_digitada.strip() != "":
             categoria_final = nova_cat_digitada.strip()
 
-    # Conta / Cartão dinâmica
+    # Contas / Cartões com opção dinâmica
     contas_base = ["Cash husband", "Nubank"]
     if not st.session_state.cartoes.empty:
         contas_base.extend(st.session_state.cartoes["Nome"].tolist())
@@ -136,6 +67,7 @@ elif aba == "Cadastro (Form)":
     valor_total = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
     data_compra = st.date_input("Data da Compra", value=datetime.today())
     
+    # Campos baseados no seu print do CodePen
     parcelas = st.number_input("Installments (Parcelas)", min_value=1, max_value=48, value=1)
     frequencia = st.selectbox("Frequência", ["Mensal", "Quinzenal", "Anual", "Única"])
     modo_valor = st.selectbox("Modo de Valor", ["Dividir Total", "Replicar Integral"])
@@ -148,7 +80,9 @@ elif aba == "Cadastro (Form)":
             st.warning("Preencha a descrição.")
         else:
             novos_registros = []
+            
             for i in range(parcelas):
+                # Calcula a data de cada parcela baseada na frequência
                 if frequencia == "Mensal":
                     data_parcela = data_compra + relativedelta(months=i)
                 elif frequencia == "Quinzenal":
@@ -158,6 +92,7 @@ elif aba == "Cadastro (Form)":
                 else:
                     data_parcela = data_compra
 
+                # Define o valor de acordo com o modo escolhido
                 if modo_valor == "Dividir Total" and parcelas > 0:
                     valor_parcela = valor_total / parcelas
                 else:
@@ -215,6 +150,3 @@ elif aba == "Gerenciar Categorias":
             st.success("Categoria adicionada!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
-
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray;'>Fluxo104 © 2026</p>", unsafe_allow_html=True)
