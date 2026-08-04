@@ -255,7 +255,7 @@ elif aba == "Statistical Indicators":
         pivot_mensal = pivot_mensal.reset_index().sort_values("AnoMes")
         
         if len(pivot_mensal) > 0:
-            # Tabela 1: Z-Score de Despesas (mantida conforme solicitado)
+            # Tabela 1: Z-Score de Despesas
             valores_exp = pivot_mensal["Expense"]
             media_geral = valores_exp.mean()
             desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
@@ -344,14 +344,12 @@ elif aba == "Statistical Indicators":
             # Pega o valor exato do mês selecionado
             val_mes_atual = float(pivot_mensal[pivot_mensal["AnoMes"] == mes_selecionado][metrica_selecionada].values[0])
             
-            # Constrói a tabela de -3 até +3 desvios (exatamente como no Excel!)
+            # Constrói a tabela de -3 até +3 desvios
             z_steps = np.arange(-3.0, 3.1, 0.1)
             bell_data = []
             
             for z in z_steps:
-                # X real = Média + (Z * Desvio Padrão)
                 x_val = media_s + (z * desvio_s)
-                # Fórmula da Distribuição Normal (PDF equivalente ao NORM.DIST no Excel com acumulado=Falso)
                 pdf_val = (1 / (desvio_s * np.sqrt(2 * np.pi))) * np.exp(-0.5 * (z ** 2))
                 
                 bell_data.append({
@@ -374,7 +372,6 @@ elif aba == "Statistical Indicators":
                 line={'color': '#1f77b4', 'strokeWidth': 3}
             ).properties(height=350)
             
-            # Linha vertical indicando o ponto exato do mês selecionado
             df_ponto = pd.DataFrame([{"Valor_Real": val_mes_atual, "Mes": mes_selecionado}])
             linha_atual = alt.Chart(df_ponto).mark_rule(color='#ff4b4b', strokeWidth=3, strokeDash=[4, 4]).encode(
                 x='Valor_Real:Q',
@@ -384,7 +381,7 @@ elif aba == "Statistical Indicators":
             grafico_final_sino = (curva_sino + linha_atual).interactive()
             st.altair_chart(grafico_final_sino, use_container_width=True)
             
-            st.info(f"📍 **Análise do Mês ({meses} -> {mes_selecionado})**: O valor atual de **{metrica_selecionada}** é **R$ {val_mes_atual:,.2f}**. A média histórica é de **R$ {media_s:,.2f}** com desvio padrão de **R$ {desvio_s:,.2f}**.")
+            st.info(f"📍 **Análise do Mês ({mes_selecionado})**: O valor atual de **{metrica_selecionada}** é **R$ {val_mes_atual:,.2f}**. A média histórica é de **R$ {media_s:,.2f}** com desvio padrão de **R$ {desvio_s:,.2f}**.")
             
         else:
             st.info("Nenhuma despesa em Budget registrada para gerar estatísticas.")
