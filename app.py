@@ -45,7 +45,7 @@ def colorir_negativos(val):
     return ''
 
 # Menu lateral
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Financial Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Dashboard Financeiro")
@@ -67,7 +67,6 @@ if aba == "Dashboard":
         budget_despesas = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         
-        # Despesas Vencidas: Despesas com status Budget e data anterior a hoje (incluindo parceladas ou isoladas)
         hoje_dt = pd.to_datetime(datetime.today().date())
         despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_dt)]["Valor"].sum()
     else:
@@ -196,6 +195,50 @@ if aba == "Dashboard":
         st.dataframe(df_recentes.style.map(colorir_negativos), use_container_width=True)
     else:
         st.info("Nenhuma transação recente.")
+
+elif aba == "Financial Indicators":
+    st.subheader("📈 Financial Indicators (Budget)")
+    st.markdown("Indicadores financeiros calculados mês a mês com base no planejamento (Budget).")
+    
+    df = st.session_state.lancamentos
+    if not df.empty and not df[df["Status"] == "Budget"].empty:
+        df_b = df[df["Status"] == "Budget"].copy()
+        df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
+        
+        meses = sorted(df_b["AnoMes"].unique())
+        dados_indicadores = []
+        
+        for m in meses:
+            df_m = df_b[df_b["AnoMes"] == m]
+            
+            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
+            
+            # Identifica Debts (procurando palavras como debt ou dívida na categoria)
+            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
+            
+            # Identifica Credit Card (procurando contas ou descrições associadas a cartões cadastrados ou termo cartão/credit)
+            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
+            
+            # Cálculo das porcentagens com proteção contra divisão por zero
+            base_income = income if income > 0 else 1.0
+            
+            exp_inc_ratio = (expense / base_income) * 100
+            debt_inc_ratio = (debts / base_income) * 100
+            debt_cc_inc_ratio = ((debts + credit_card) / base_income) * 100
+            
+            dados_indicadores.append({
+                "Mês": m,
+                "Expense / Income Ratio": f"{exp_inc_ratio:.1f}%",
+                "Debts / Income Ratio": f"{debt_inc_ratio:.1f}%",
+                "(Debts + Credit Card) / Income": f"{debt_cc_inc_ratio:.1f}%"
+            })
+            
+        df_indicators = pd.DataFrame(dados_indicadores).set_index("Mês")
+        st.dataframe(df_indicators, use_container_width=True)
+    else:
+        st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
