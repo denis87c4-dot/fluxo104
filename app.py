@@ -130,6 +130,7 @@ if aba == "Dashboard":
     
     if not df.empty and not df[df["Status"] == "Budget"].empty:
         df_budget = df[df["Status"] == "Budget"].copy()
+        df_budget["Data"] = pd.to_datetime(df_budget["Data"], errors="coerce")
         df_budget["AnoMes"] = df_budget["Data"].dt.to_period("M").astype(str)
         
         budget_mensal = df_budget.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0)
@@ -143,27 +144,20 @@ if aba == "Dashboard":
         budget_mensal["Cash Flow Mês"] = budget_mensal["Budget Receitas"] - budget_mensal["Budget Despesas"]
         budget_mensal["Acumulado"] = budget_mensal["Cash Flow Mês"].cumsum()
         
-        # Tabela Formatada
         budget_mensal_fmt = budget_mensal.copy()
         for col in budget_mensal_fmt.columns:
             budget_mensal_fmt[col] = budget_mensal_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
         st.dataframe(budget_mensal_fmt.style.map(colorir_negativos), use_container_width=True)
         
-        # Gráfico Customizado com Altair (Despesas = Barras Vermelhas | Receitas = Linha Azul)
         df_chart = budget_mensal.reset_index()
-        
         base = alt.Chart(df_chart).encode(x=alt.X('AnoMes:N', title='Mês'))
         
         barras_despesas = base.mark_bar(color='#ff4b4b').encode(
             y=alt.Y('Budget Despesas:Q', title='Valor (R$)'),
             tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
         )
-        
-        linha_receitas = base.mark_line(color='#1f77b4', strokeWidth=3).encode(
-            y='Budget Receitas:Q'
-        )
-        
+        linha_receitas = base.mark_line(color='#1f77b4', strokeWidth=3).encode(y='Budget Receitas:Q')
         pontos_receitas = base.mark_point(color='#1f77b4', size=60).encode(
             y='Budget Receitas:Q',
             tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
@@ -171,7 +165,6 @@ if aba == "Dashboard":
         
         grafico_combinado = (barras_despesas + linha_receitas + pontos_receitas).properties(height=400).interactive()
         st.altair_chart(grafico_combinado, use_container_width=True)
-        
     else:
         st.info("Nenhum registro de Budget cadastrado para o comparativo.")
 
@@ -203,6 +196,7 @@ elif aba == "Financial Indicators":
     df = st.session_state.lancamentos
     if not df.empty and not df[df["Status"] == "Budget"].empty:
         df_b = df[df["Status"] == "Budget"].copy()
+        df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
         df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
         
         meses = sorted(df_b["AnoMes"].unique())
@@ -214,14 +208,11 @@ elif aba == "Financial Indicators":
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
             expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
             
-            # Identifica Debts (procurando palavras como debt ou dívida na categoria)
             debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             
-            # Identifica Credit Card (procurando contas ou descrições associadas a cartões cadastrados ou termo cartão/credit)
             cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
             credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
             
-            # Cálculo das porcentagens com proteção contra divisão por zero
             base_income = income if income > 0 else 1.0
             
             exp_inc_ratio = (expense / base_income) * 100
