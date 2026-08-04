@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import altair as alt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -31,7 +32,6 @@ else:
 
 # Função auxiliar para colorir números negativos de vermelho em DataFrames
 def colorir_negativos(val):
-    # Se for string formatada em R$, tenta converter de volta para float para verificar se é negativo
     if isinstance(val, str) and "R$" in val:
         try:
             limpo = val.replace("R$", "").replace(".", "").replace(",", ".").strip()
@@ -124,9 +124,9 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # 2. BUDGET: INCOME X EXPENSES (Comparativo Mensal + Cash Flow + Acumulado em R$)
+    # 2. BUDGET: INCOME X EXPENSES (Comparativo Mensal + Gráfico Customizado Altair)
     st.markdown("### 📊 Budget: Income x Expenses (Comparativo Mensal)")
-    st.markdown("Visão planejada mês a mês com Cash Flow e Acumulado.")
+    st.markdown("Visão planejada mês a mês (Despesas em Barras Vermelhas e Receitas em Linha Azul).")
     
     if not df.empty and not df[df["Status"] == "Budget"].empty:
         df_budget = df[df["Status"] == "Budget"].copy()
@@ -143,12 +143,35 @@ if aba == "Dashboard":
         budget_mensal["Cash Flow Mês"] = budget_mensal["Budget Receitas"] - budget_mensal["Budget Despesas"]
         budget_mensal["Acumulado"] = budget_mensal["Cash Flow Mês"].cumsum()
         
+        # Tabela Formatada
         budget_mensal_fmt = budget_mensal.copy()
         for col in budget_mensal_fmt.columns:
             budget_mensal_fmt[col] = budget_mensal_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
         st.dataframe(budget_mensal_fmt.style.map(colorir_negativos), use_container_width=True)
-        st.bar_chart(budget_mensal[["Budget Receitas", "Budget Despesas"]])
+        
+        # Gráfico Customizado com Altair (Despesas = Barras Vermelhas | Receitas = Linha Azul)
+        df_chart = budget_mensal.reset_index()
+        
+        base = alt.Chart(df_chart).encode(x=alt.X('AnoMes:N', title='Mês'))
+        
+        barras_despesas = base.mark_bar(color='#ff4b4b').encode(
+            y=alt.Y('Budget Despesas:Q', title='Valor (R$)'),
+            tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
+        )
+        
+        linha_receitas = base.mark_line(color='#1f77b4', strokeWidth=3).encode(
+            y='Budget Receitas:Q'
+        )
+        
+        pontos_receitas = base.mark_point(color='#1f77b4', size=60).encode(
+            y='Budget Receitas:Q',
+            tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
+        )
+        
+        grafico_combinado = (barras_despesas + linha_receitas + pontos_receitas).properties(height=400).interactive()
+        st.altair_chart(grafico_combinado, use_container_width=True)
+        
     else:
         st.info("Nenhum registro de Budget cadastrado para o comparativo.")
 
