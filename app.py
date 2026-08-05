@@ -7,8 +7,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
-st.title("💰 Fluxo104 - Gestão Financeira")
-st.markdown("Acompanhamento financeiro em tempo real com salvamento automático.")
+st.title("💰 Fluxo104 - Gestão Financeira Executiva")
+st.markdown("Acompanhamento financeiro corporativo em tempo real com salvamento automático e inteligência preditiva.")
 
 # ==================== PERSISTÊNCIA DE DADOS (CSV) ====================
 ARQUIVO_LANCAMENTOS = "lancamentos.csv"
@@ -48,21 +48,39 @@ def colorir_negativos(val):
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
-    st.subheader("📊 Dashboard Financeiro")
+    st.subheader("📊 Executive Dashboard")
     
     df = st.session_state.lancamentos
     
     if not df.empty:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        ano_atual = datetime.today().year
-        mes_atual = datetime.today().month
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
+            
+        col_f1, col_f2 = st.columns([2, 4])
+        with col_f1:
+            mes_selecionado = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, index=0)
         
-        df_mes_atual = df[(df["Data"].dt.year == ano_atual) & (df["Data"].dt.month == mes_atual)]
+        ano_sel, mes_sel = map(int, mes_selecionado.split("-"))
+        
+        dt_sel = datetime(ano_sel, mes_sel, 1)
+        dt_ant = dt_sel - relativedelta(months=1)
+        
+        df_mes_atual = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
+        df_mes_ant = df[(df["Data"].dt.year == dt_ant.year) & (df["Data"].dt.month == dt_ant.month)]
         
         receitas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Efetivado")]["Valor"].sum()
+        receitas_ant = df_mes_ant[(df_mes_ant["Tipo"] == "Receita") & (df_mes_ant["Status"] == "Efetivado")]["Valor"].sum()
+        delta_rec = ((receitas_mes - receitas_ant) / receitas_ant * 100) if receitas_ant > 0 else 0.0
+        
         despesas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Efetivado")]["Valor"].sum()
+        despesas_ant = df_mes_ant[(df_mes_ant["Tipo"] == "Despesa") & (df_mes_ant["Status"] == "Efetivado")]["Valor"].sum()
+        delta_desp = ((despesas_mes - despesas_ant) / despesas_ant * 100) if despesas_ant > 0 else 0.0
         
         budget_despesas = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
@@ -76,6 +94,10 @@ if aba == "Dashboard":
             texto_vencidas_detalhe = f"<span style='color: #ff4b4b; font-weight: bold;'>R$ {despesas_vencidas:,.2f} ({descricoes_vencidas})</span>"
         else:
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
+            
+        total_receitas_geral = df[df["Tipo"] == "Receita"]["Valor"].sum()
+        total_despesas_geral = df[df["Tipo"] == "Despesa"]["Valor"].sum()
+        patrimonio_liquido_global = total_receitas_geral - total_despesas_geral
     else:
         df_mes_atual = pd.DataFrame()
         receitas_mes = 0.0
@@ -84,25 +106,76 @@ if aba == "Dashboard":
         budget_receitas = 0.0
         despesas_vencidas = 0.0
         texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
+        delta_rec = 0.0
+        delta_desp = 0.0
+        patrimonio_liquido_global = 0.0
+        df_vencidas = pd.DataFrame()
+        mes_selecionado = datetime.today().strftime("%Y-%m")
 
-    # Cards de Métricas Principais
-    col1, col2, col3 = st.columns(3)
+    st.markdown("---")
+
+    # Cards de Métricas Principais Executivos
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta="Total efetivado")
+        st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
     with col2:
-        st.metric("📉 DESPESAS DO MÊS", f"R$ {despesas_mes:,.2f}", delta="Total efetivado")
+        st.metric("📉 DESPESAS DO MÊS", f"R$ {despesas_mes:,.2f}", delta=f"{delta_desp:+.1f}% vs mês ant.", delta_color="inverse")
     with col3:
         st.markdown(f"**⚠️ DESPESAS VENCIDAS**<br>{texto_vencidas_detalhe}", unsafe_allow_html=True)
+    with col4:
+        st.metric("🏛️ PATRIMÔNIO LÍQUIDO", f"R$ {patrimonio_liquido_global:,.2f}", delta="Acumulado Geral")
+
+    st.markdown("---")
+
+    # Ações Rápidas para Despesas Vencidas
+    if not df.empty and not df_vencidas.empty:
+        with st.expander("⚡ Ações Rápidas: Regularizar Despesa Vencida"):
+            st.write("Selecione uma despesa vencida abaixo para efetivá-la instantaneamente:")
+            opcoes_vencidas = {f"{row['Data'].strftime('%d/%m/%Y')} - {row['Descricao']} (R$ {row['Valor']:,.2f})": idx for idx, row in df_vencidas.iterrows()}
+            escolha_pagar = st.selectbox("Despesa pendente:", list(opcoes_vencidas.keys()))
+            if st.button("✅ Marcar como Efetivado (Pago)", type="primary"):
+                idx_alvo = opcoes_vencidas[escolha_pagar]
+                st.session_state.lancamentos.loc[idx_alvo, "Status"] = "Efetivado"
+                st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                st.success("Despesa atualizada para Efetivado com sucesso!")
+                st.rerun()
+
+    # Executive Insight Dinâmico
+    if not df.empty and not df_mes_atual.empty:
+        gastos_por_cat = df_mes_atual[df_mes_atual["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum()
+        if not gastos_por_cat.empty:
+            cat_maior_gasto = gastos_por_cat.idxmax()
+            val_maior_gasto = gastos_por_cat.max()
+            st.info(f"💡 **Executive Insight**: No mês de **{mes_selecionado}**, a categoria com maior consumo de recursos foi **{cat_maior_gasto}**, totalizando **R$ {val_maior_gasto:,.2f}**.")
+
+    st.markdown("---")
+
+    # Evolução Diária do Caixa
+    st.markdown(f"### 📈 Evolução Diária do Caixa ({mes_selecionado})")
+    if not df_mes_atual.empty:
+        df_diario = df_mes_atual.copy()
+        df_diario["Dia"] = df_diario["Data"].dt.strftime("%d/%m")
+        df_diario["FluxoDiario"] = df_diario.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else -r["Valor"], axis=1)
+        pivot_diario = df_diario.groupby("Dia")["FluxoDiario"].sum().cumsum().reset_index()
+        
+        chart_diario = alt.Chart(pivot_diario).mark_line(strokeWidth=3, color='#2a9d8f', point=True).encode(
+            x=alt.X('Dia:N', title='Dia do Mês'),
+            y=alt.Y('FluxoDiario:Q', title='Saldo Acumulado Diário (R$)'),
+            tooltip=['Dia', 'FluxoDiario']
+        ).properties(height=300).interactive()
+        st.altair_chart(chart_diario, use_container_width=True)
+    else:
+        st.info("Nenhum lançamento registrado para o período selecionado.")
 
     st.markdown("---")
 
     # Comprometimento do Budget
-    st.markdown("### 🎯 Comprometimento da Renda (Budget - Mês Atual)")
+    st.markdown("### 🎯 Comprometimento da Renda (Budget - Período Selecionado)")
     renda_base = budget_receitas if budget_receitas > 0 else 1.0
     comprometimento = min((budget_despesas / renda_base) * 100, 100.0)
     
     col_b1, col_b2 = st.columns(2)
-    col_b1.write(f"**Renda do Mês (Budget Income):** R$ {budget_receitas:,.2f}")
+    col_b1.write(f"**Renda Planejada (Budget Income):** R$ {budget_receitas:,.2f}")
     col_b2.write(f"**Total Planejado (Budget Expenses):** R$ {budget_despesas:,.2f}")
     
     st.progress(int(comprometimento))
@@ -110,7 +183,8 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    st.markdown("### 🏛️ Cash Flow por Account (Mês Atual)")
+    # Cash Flow por Conta
+    st.markdown("### 🏛️ Cash Flow por Account (Período Selecionado)")
     if not df_mes_atual.empty:
         cash_flow = df_mes_atual.groupby(["Conta", "Tipo"])["Valor"].sum().unstack(fill_value=0.0)
         if "Receita" not in cash_flow.columns:
@@ -126,7 +200,7 @@ if aba == "Dashboard":
         st.dataframe(cash_flow_fmt.style.map(colorir_negativos), use_container_width=True)
         st.bar_chart(cash_flow["Saldo Líquido"])
     else:
-        st.info("Nenhuma conta movimentada neste mês atual.")
+        st.info("Nenhuma conta movimentada neste período.")
 
     st.markdown("---")
     st.markdown("### 🕒 Últimas Transações Recentes")
@@ -155,9 +229,7 @@ elif aba == "Projections & Charts":
         pivot_graf["CashFlow"] = pivot_graf["Receita"] - pivot_graf["Despesa"]
         pivot_graf["Acumulado"] = pivot_graf["CashFlow"].cumsum()
         
-        # =========================================================================
-        # RECURSO ESPECIAL: CÉLULA SUSPENSA (SIMULADOR DE CENÁRIO / WHAT-IF)
-        # =========================================================================
+        # CÉLULA SUSPENSA
         st.markdown("---")
         st.markdown("### 🛸 Célula Suspensa (Simulador Preditivo de Ajuste de Orçamento)")
         st.markdown("Painel flutuante interativo para testar impactos imediatos no seu fluxo de caixa futuro simulando cortes ou injeções de capital.")
@@ -181,9 +253,7 @@ elif aba == "Projections & Charts":
                 st.metric("Projeção de Cash Flow Mensal Ajustado (Célula Suspensa)", f"R$ {fluxo_simulado:,.2f}", delta=f"{fator_ajuste_despesa:+d}% nas despesas")
         st.markdown("---")
         
-        # =========================================================================
-        # GRÁFICO 1: Projeção de Folego de Caixa (Runway Preditivo)
-        # =========================================================================
+        # 1. Runway Preditivo
         st.markdown("### 1️⃣ Projeção de Fôlego de Caixa (Runway Preditivo em Meses)")
         saldo_atual_caixa = pivot_graf["Acumulado"].iloc[-1] if not pivot_graf.empty else 0.0
         media_despesas_recente = pivot_graf["Despesa"].tail(3).mean() if len(pivot_graf) >= 3 else pivot_graf["Despesa"].mean()
@@ -207,9 +277,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 2: Projeção de Despesas com Banda de Confiança Estatística
-        # =========================================================================
+        # 2. Banda de Confiança Estatística
         st.markdown("### 2️⃣ Projeção de Despesas com Banda de Confiança Estatística")
         if len(pivot_graf) >= 2:
             x_vals = np.arange(len(pivot_graf))
@@ -242,9 +310,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 3: Simulação de Metas de Patrimônio (Crescimento Composto)
-        # =========================================================================
+        # 3. Crescimento Composto
         st.markdown("### 3️⃣ Simulação de Atingimento de Meta de Patrimônio (Crescimento Composto)")
         taxa_juros_anual = st.slider("Taxa de Retorno Anual Estimada dos Investimentos (% a.a.)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
         taxa_mensal = (1 + (taxa_juros_anual / 100.0))**(1/12) - 1
@@ -272,9 +338,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 4: Gráfico de Velocidade de Queima de Caixa (Burn Rate Trend)
-        # =========================================================================
+        # 4. Burn Rate Velocity
         st.markdown("### 4️⃣ Gráfico de Tendência de Queima de Caixa (Burn Rate Velocity)")
         pivot_graf["Variacao_Despesa"] = pivot_graf["Despesa"].diff().fillna(0.0)
         chart_burn = alt.Chart(pivot_graf).mark_bar().encode(
@@ -291,9 +355,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 5: Curva ABC de Gastos (Pareto Preditiva)
-        # =========================================================================
+        # 5. Curva ABC
         st.markdown("### 5️⃣ Curva ABC de Gastos (Foco em Categorias de Maior Impacto)")
         df_despesas_totais = df[df["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
         if not df_despesas_totais.empty:
@@ -310,9 +372,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 6: Equilíbrio de Renda vs Custo Fixo (Operating Leverage Pessoal)
-        # =========================================================================
+        # 6. Alavancagem Pessoal
         st.markdown("### 6️⃣ Equilíbrio Estrutural (Custo Fixo vs Renda)")
         if "Categoria" in df.columns:
             df_fixo = df[(df["Tipo"] == "Despesa") & (df["Categoria"].str.contains("Moradia|Aluguel|Fixa|Conta|Dívida", case=False, na=False))].groupby("AnoMes")["Valor"].sum().reset_index()
@@ -332,9 +392,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 7: Projeção de Independência Financeira (Milestones)
-        # =========================================================================
+        # 7. Milestones Independência
         st.markdown("### 7️⃣ Projeção para Independência Financeira (Milestones)")
         meta_patrimonio_indep = st.number_input("Defina sua Meta de Patrimônio para Independência (R$)", value=500000.0, step=50000.0)
         
@@ -353,9 +411,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 8: Mapa de Calor de Sazonalidade de Despesas (Month-over-Month Heatmap)
-        # =========================================================================
+        # 8. Heatmap Sazonalidade
         st.markdown("### 8️⃣ Mapa de Calor de Sazonalidade de Despesas")
         df_heatmap = df[df["Tipo"] == "Despesa"].copy()
         if not df_heatmap.empty:
@@ -376,9 +432,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 9: Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)
-        # =========================================================================
+        # 9. Monte Carlo
         st.markdown("### 9️⃣ Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)")
         st.markdown("Simula 100 trajetórias estocásticas de caixa baseadas no desvio padrão histórico para avaliar o risco de saldo negativo.")
         if len(pivot_graf) >= 2:
@@ -406,9 +460,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 10: Índice de Resiliência de Fluxo de Caixa (Resilience Index)
-        # =========================================================================
+        # 10. Resilience Index
         st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
         if len(pivot_graf) > 0:
             df_res = pivot_graf.copy()
@@ -430,9 +482,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 11: Dispersão de Despesas e Elasticidade (Scatter Matrix)
-        # =========================================================================
+        # 11. Dispersão de Despesas
         st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
         df_scatter = df[df["Tipo"] == "Despesa"].copy()
         if not df_scatter.empty:
@@ -449,9 +499,7 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # =========================================================================
-        # GRÁFICO 12: Índice de Autonomia de Renda Passiva (Freedom Gauge)
-        # =========================================================================
+        # 12. Freedom Gauge
         st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
         taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
         taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
