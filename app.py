@@ -269,18 +269,13 @@ elif aba == "Financial Indicators":
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
             expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
             
-            # 4. Índice de Liquidez Imediata (Cash Ratio)
-            # Considera contas líquidas (excluindo cartões) vs despesas do mês
             contas_liquidas = df_m[(df_m["Tipo"] == "Receita") & (~df_m["Conta"].isin(st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []))]["Valor"].sum()
             cash_ratio = (contas_liquidas / expense) if expense > 0 else 0.0
             cash_ratio_str = f"{cash_ratio:.2f}x (Coberto)" if cash_ratio >= 1.0 else f"{cash_ratio:.2f}x (⚠️ Ajuste Caixa)"
 
-            # 5. Taxa de Poupança Líquida (Net Savings Rate)
             net_savings = ((income - expense) / income * 100) if income > 0 else 0.0
             net_savings_str = f"{net_savings:.1f}%"
 
-            # 6. Value at Risk (VaR 95% Pessoal)
-            # Baseado na distribuição normal do histórico de despesas até o mês atual (Média + 1.645 * Desvio Padrão)
             df_hist_exp = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
             series_exp_hist = df_hist_exp.groupby("AnoMes")["Valor"].sum()
             
@@ -301,6 +296,58 @@ elif aba == "Financial Indicators":
 
         df_adv_table_2 = pd.DataFrame(dados_avancados_4_6).set_index("Mês")
         st.dataframe(df_adv_table_2, use_container_width=True)
+
+        st.markdown("---")
+
+        # --- TABELA 3: INDICADORES 7, 8 e 9 (Interest Coverage, ROA Pessoal, Debt-to-Income) ---
+        st.markdown("### 🏛️ Advanced Financial & Leverage Metrics (7 a 9)")
+        st.markdown("Indicadores de Cobertura de Juros, Rentabilidade dos Ativos (ROA) e Endividamento da Renda (DTI).")
+
+        dados_avancados_7_9 = []
+        for m in meses:
+            df_m = df_b[df_b["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
+            
+            # Identificação de encargos financeiros / juros (categorias que contêm 'juros', 'interest', 'financiamento')
+            juros_mes = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("juros|interest|financiamento", case=False, na=False))]["Valor"].sum()
+            
+            # 7. Índice de Cobertura de Juros (Interest Coverage Ratio) = Receita / Encargos de Juros
+            if juros_mes > 0:
+                interest_coverage = income / juros_mes
+                interest_cov_str = f"{interest_coverage:.2f}x (Seguro > 3.0)" if interest_coverage >= 3.0 else f"{interest_coverage:.2f}x (⚠️ Alerta < 3.0)"
+            else:
+                interest_cov_str = "N/A (Sem Encargos de Juros)"
+
+            # 8. Return on Assets (ROA Pessoal) = Saldo Líquido do Mês / Patrimônio Acumulado (Ativos Totais estimados)
+            df_ate_mes = df_b[df_b["AnoMes"] <= m]
+            ativos_totais = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
+            net_income_mes = income - expense
+            
+            if ativos_totais > 0:
+                roa_val = (net_income_mes / ativos_totais) * 100
+                roa_str = f"{roa_val:.2f}%"
+            else:
+                roa_str = "0.00% (Ativos Base Zerados)"
+
+            # 9. Índice de Endividamento da Renda / Debt-to-Income (DTI) = Total de Dívidas e Obrigações / Renda Bruta
+            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
+            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
+            total_obrigacoes = debts + credit_card
+            
+            dti_val = (total_obrigacoes / income * 100) if income > 0 else 0.0
+            dti_str = f"{dti_val:.1f}% (⚠️ Alto > 40%)" if dti_val > 40.0 else f"{dti_val:.1f}% (Saudável <= 40%)"
+
+            dados_avancados_7_9.append({
+                "Mês": m,
+                "7. Interest Coverage (Cobertura de Juros)": interest_cov_str,
+                "8. ROA Pessoal (Retorno sobre Ativos)": roa_str,
+                "9. Debt-to-Income (Endividamento - DTI)": dti_str
+            })
+
+        df_adv_table_3 = pd.DataFrame(dados_avancados_7_9).set_index("Mês")
+        st.dataframe(df_adv_table_3, use_container_width=True)
         
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
