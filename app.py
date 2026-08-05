@@ -309,17 +309,14 @@ elif aba == "Financial Indicators":
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
             expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
             
-            # Identificação de encargos financeiros / juros (categorias que contêm 'juros', 'interest', 'financiamento')
             juros_mes = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("juros|interest|financiamento", case=False, na=False))]["Valor"].sum()
             
-            # 7. Índice de Cobertura de Juros (Interest Coverage Ratio) = Receita / Encargos de Juros
             if juros_mes > 0:
                 interest_coverage = income / juros_mes
                 interest_cov_str = f"{interest_coverage:.2f}x (Seguro > 3.0)" if interest_coverage >= 3.0 else f"{interest_coverage:.2f}x (⚠️ Alerta < 3.0)"
             else:
                 interest_cov_str = "N/A (Sem Encargos de Juros)"
 
-            # 8. Return on Assets (ROA Pessoal) = Saldo Líquido do Mês / Patrimônio Acumulado (Ativos Totais estimados)
             df_ate_mes = df_b[df_b["AnoMes"] <= m]
             ativos_totais = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
             net_income_mes = income - expense
@@ -330,7 +327,6 @@ elif aba == "Financial Indicators":
             else:
                 roa_str = "0.00% (Ativos Base Zerados)"
 
-            # 9. Índice de Endividamento da Renda / Debt-to-Income (DTI) = Total de Dívidas e Obrigações / Renda Bruta
             debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
             credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
@@ -439,7 +435,95 @@ elif aba == "Statistical Indicators":
                 
             df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
             st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
+
+            # ==================== NOVA TABELA: 4 PARÂMETROS ESTATÍSTICOS AVANÇADOS ====================
+            st.markdown("---")
+            st.markdown("### 🔬 Deep Statistical Metrics (Gini, Autocorrelação, VaR 99% & Normalidade)")
+            st.markdown("Parâmetros avançados de concentração, dependência temporal, risco extremo e aderência à distribuição normal.")
+
+            dados_deep_stats = []
             
+            # Cálculo prévio global para a série histórica de despesas
+            series_exp_historico = pivot_mensal["Expense"]
+            
+            # 1. Autocorrelação de Lag-1 global da série
+            if len(series_exp_historico) >= 3:
+                autocorr_val = series_exp_historico.autocorr(lag=1)
+                if pd.isna(autocorr_val):
+                    autocorr_val = 0.0
+            else:
+                autocorr_val = 0.0
+
+            # 3. VaR Paramétrico 99% global
+            if len(series_exp_historico) > 1 and desvio_padrao > 0:
+                var_99 = media_geral + (2.326 * desvio_padrao) # Z = 2.326 para 99%
+            else:
+                var_99 = media_geral
+
+            # 4. Teste de Normalidade simplificado (Jarque-Bera aproximado ou base em Skew/Kurtosis)
+            # JB = n/6 * (Skew^2 + (Kurt^2)/4)
+            if n_val >= 4:
+                jb_stat = (n_val / 6.0) * ((skew_val ** 2) + ((kurt_val ** 2) / 4.0))
+                # Valor crítico qui-quadrado (2 graus de liberdade) a 5% é ~5.99
+                normal_passed = jb_stat < 5.99
+            else:
+                jb_stat = 0.0
+                normal_passed = True
+
+            for idx, row in pivot_mensal.iterrows():
+                m = row["AnoMes"]
+                
+                # 1. Coeficiente de Gini dos gastos do mês específico por categoria
+                df_mes_cat = df_b[(df_b["AnoMes"] == m) & (df_b["Tipo"] == "Despesa")]
+                if not df_mes_cat.empty:
+                    gastos_cat = sorted(df_mes_cat.groupby("Categoria")["Valor"].sum().values)
+                    n_cats = len(gastos_cat)
+                    if n_cats > 1 and sum(gastos_cat) > 0:
+                        acum = sum((i + 1) * val for i, val in enumerate(gastos_cat))
+                        gini_val = (2 * acum) / (n_cats * sum(gastos_cat)) - (n_cats + 1) / n_cats
+                        gini_val = max(0.0, min(1.0, gini_val))
+                    else:
+                        gini_val = 0.0
+                else:
+                    gini_val = 0.0
+
+                # Interpretação Gini
+                if gini_val > 0.6:
+                    gini_interp = f"Gini {gini_val:.2f} (⚠️ Alta Concentração em poucas categorias)"
+                elif gini_val > 0.3:
+                    gini_interp = f"Gini {gini_val:.2f} (Concentração Moderada)"
+                else:
+                    gini_interp = f"Gini {gini_val:.2f} (✅ Despesas bem diversificadas)"
+
+                # Interpretação Autocorrelação
+                if autocorr_val > 0.5:
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alta Inércia/Previsível)"
+                elif autocorr_val < -0.3:
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Comportamento Alternado)"
+                else:
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Independente/Estocástico)"
+
+                # Interpretação VaR 99%
+                var_interp = f"R$ {var_99:,.2f} (Pior caso esperado a 99%)"
+
+                # Interpretação Normalidade
+                if normal_passed:
+                    norm_interp = f"JB: {jb_stat:.2f} (✅ Passou no teste de Normalidade)"
+                else:
+                    norm_interp = f"JB: {jb_stat:.2f} (⚠️ Rejeita Normalidade / Caudas Pesadas)"
+
+                dados_deep_stats.append({
+                    "Mês": m,
+                    "1. Coeficiente de Gini": gini_interp,
+                    "2. Autocorrelação (Lag-1)": autocorr_interp,
+                    "3. Value at Risk (VaR 99%)": var_interp,
+                    "4. Teste de Normalidade (Jarque-Bera)": norm_interp
+                })
+
+            df_deep_table = pd.DataFrame(dados_deep_stats).set_index("Mês")
+            st.dataframe(df_deep_table, use_container_width=True)
+            # ===================================================================================
+
             st.markdown("---")
             st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
             st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão.")
