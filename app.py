@@ -106,18 +106,12 @@ if aba == "Dashboard":
         fluxo_caixa_mes = receitas_mes - despesas_mes
 
         # ==================== CÁLCULO DOS 4 NOVOS PARÂMETROS ====================
-        # 1. Taxa de Poupança (Net Savings Rate): ((Receitas - Despesas) / Receitas) * 100
         net_savings_rate = ((receitas_mes - despesas_mes) / receitas_mes * 100) if receitas_mes > 0 else 0.0
-
-        # 2. Comprometimento de Renda (Budget vs Despesas Efetivadas)
         comprometimento_renda = (despesas_mes / receitas_mes * 100) if receitas_mes > 0 else 0.0
 
-        # 3. Índice de Liquidez / Cash Ratio (Contas líquidas / Despesas do mês)
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         contas_liquidas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (~df_mes_atual["Conta"].isin(cartoes_nomes))]["Valor"].sum()
         cash_ratio_val = (contas_liquidas_mes / despesas_mes) if despesas_mes > 0 else 0.0
-
-        # 4. Burn Rate / Queima de Caixa Mensal (Se fluxo for negativo)
         burn_rate_val = abs(fluxo_caixa_mes) if fluxo_caixa_mes < 0 else 0.0
     else:
         df_mes_atual = pd.DataFrame()
@@ -161,6 +155,70 @@ if aba == "Dashboard":
         st.metric("🛡️ CASH RATIO", f"{cash_ratio_val:.2f}x", delta="Liquidez Imediata", delta_color="normal")
     with col_n4:
         st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
+
+    st.markdown("---")
+
+    # ==================== NOVA TABELA DE RESUMO HISTÓRICO MENSAL ====================
+    st.markdown("### 🗓️ Histórico Consolidado por Mês")
+    st.markdown("Tabela geral contemplando **Income**, **Expense**, **Cash Flow** e **Acumulado** ordenados temporalmente.")
+    
+    if not df.empty:
+        # Criando tabela pivot com base em todos os lançamentos efetivados/gerais por mês
+        df_hist = df.copy()
+        pivot_hist = df_hist.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
+        
+        if "Receita" not in pivot_hist.columns:
+            pivot_hist["Receita"] = 0.0
+        if "Despesa" not in pivot_hist.columns:
+            pivot_hist["Despesa"] = 0.0
+            
+        pivot_hist = pivot_hist.rename(columns={"AnoMes": "Mês", "Receita": "Income", "Despesa": "Expense"})
+        pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
+        
+        pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense"]
+        pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
+        
+        # Reordenando colunas estritamente na ordem solicitada: Mês, Income, Expense, Cash flow, Acumulado
+        pivot_hist = pivot_hist[["Mês", "Income", "Expense", "Cash Flow", "Acumulado"]]
+        
+        # Formatando valores monetários para exibição
+        pivot_hist_fmt = pivot_hist.copy()
+        for col in ["Income", "Expense", "Cash Flow", "Acumulado"]:
+            pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+            
+        st.dataframe(aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]), use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ==================== DOIS GRÁFICOS COMPARATIVOS DE LINHAS ====================
+        st.markdown("### 📈 Gráficos Comparativos de Evolução")
+        
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("#### 1️⃣ Income vs Expense")
+            df_melt_ie = pivot_hist.melt(id_vars="Mês", value_vars=["Income", "Expense"], var_name="Métrica", value_name="Valor")
+            chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('Mês:N', title='Mês'),
+                y=alt.Y('Valor:Q', title='Montante (R$)'),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Income', 'Expense'], range=['#2a9d8f', '#e76f51']), title='Legenda'),
+                tooltip=['Mês', 'Métrica', 'Valor']
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ie, use_container_width=True)
+            
+        with col_g2:
+            st.markdown("#### 2️⃣ Cash Flow vs Acumulado")
+            df_melt_ca = pivot_hist.melt(id_vars="Mês", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
+            chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('Mês:N', title='Mês'),
+                y=alt.Y('Valor:Q', title='Montante (R$)'),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Cash Flow', 'Acumulado'], range=['#264653', '#f4a261']), title='Legenda'),
+                tooltip=['Mês', 'Métrica', 'Valor']
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ca, use_container_width=True)
+            
+    else:
+        st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
     st.markdown("---")
 
