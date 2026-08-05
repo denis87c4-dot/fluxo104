@@ -45,8 +45,8 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-# Menu lateral com a nova aba "Monthly Audit"
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+# Menu lateral com a nova aba dedicada de gráficos e projeções
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Dashboard Financeiro")
@@ -190,6 +190,140 @@ if aba == "Dashboard":
     else:
         st.info("Nenhuma transação recente.")
 
+elif aba == "Projections & Charts":
+    st.subheader("📈 Projections & Charts (Central de Gráficos e Projeções)")
+    st.markdown("Aba dedicada exclusivamente a visualizações avançadas, gráficos mistos e projeções financeiras baseadas em regressão linear ($y = ax + b$).")
+    
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        
+        pivot_graf = df.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
+        if "Receita" not in pivot_graf.columns:
+            pivot_graf["Receita"] = 0.0
+        if "Despesa" not in pivot_graf.columns:
+            pivot_graf["Despesa"] = 0.0
+        pivot_graf["CashFlow"] = pivot_graf["Receita"] - pivot_graf["Despesa"]
+        pivot_graf["Acumulado"] = pivot_graf["CashFlow"].cumsum()
+        
+        # ==========================================
+        # GRÁFICO 1: Misto (Linha e Barras) - Despesas vs Receitas Mensais
+        # ==========================================
+        st.markdown("### 1️⃣ Gráfico Misto: Barras de Despesas & Linha de Receitas")
+        st.markdown("Combinação ideal para comparar o volume de gastos mensais (barras vermelhas) diretamente com as receitas (linha azul).")
+        
+        base_g1 = alt.Chart(pivot_graf).encode(x=alt.X('AnoMes:N', title='Mês'))
+        barras_d = base_g1.mark_bar(color='#ff4b4b', opacity=0.7).encode(
+            y=alt.Y('Despesa:Q', title='Valor (R$)'),
+            tooltip=['AnoMes', 'Despesa', 'Receita']
+        )
+        linha_r = base_g1.mark_line(color='#1f77b4', strokeWidth=3).encode(y='Receita:Q')
+        pontos_r = base_g1.mark_point(color='#1f77b4', size=70).encode(
+            y='Receita:Q',
+            tooltip=['AnoMes', 'Receita', 'Despesa']
+        )
+        chart_misto = (barras_d + linha_r + pontos_r).properties(height=380).interactive()
+        st.altair_chart(chart_misto, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ==========================================
+        # GRÁFICO 2: Projeção Financeira Linear (y = ax + b)
+        # ==========================================
+        st.markdown("### 2️⃣ Gráfico de Projeção Financeira Linear ($y = ax + b$ tipo Excel)")
+        st.markdown("Calcula estatisticamente a tendência futura com base na equação de regressão linear do histórico.")
+        
+        col_proj1, col_proj2 = st.columns(2)
+        with col_proj1:
+            variavel_proj = st.selectbox("Variável para Projeção:", ["Despesa", "Receita", "CashFlow"])
+        with col_proj2:
+            meses_futuros = st.slider("Meses a Projetar no Futuro:", min_value=1, max_value=12, value=3)
+            
+        if len(pivot_graf) >= 2:
+            x_vals = np.arange(len(pivot_graf))
+            y_vals = pivot_graf[variavel_proj].values
+            
+            # Cálculo da Regressão Linear: y = a*x + b
+            a, b_coef = np.polyfit(x_vals, y_vals, 1)
+            
+            dados_regressao = []
+            for i, row in pivot_graf.iterrows():
+                dados_regressao.append({
+                    "Periodo": row["AnoMes"],
+                    "Valor": row[variavel_proj],
+                    "Tipo": "Histórico Real"
+                })
+                
+            ultimo_periodo_str = pivot_graf["AnoMes"].max()
+            ultimo_dt = datetime.strptime(ultimo_periodo_str + "-01", "%Y-%m-%d")
+            
+            for step in range(1, meses_futuros + 1):
+                fut_dt = ultimo_dt + relativedelta(months=step)
+                fut_str = fut_dt.strftime("%Y-%m")
+                x_fut = len(pivot_graf) + step - 1
+                y_fut = (a * x_fut) + b_coef
+                
+                dados_regressao.append({
+                    "Periodo": fut_str,
+                    "Valor": max(0.0, y_fut),
+                    "Tipo": f"Projeção Linear (y = {a:.1f}x + {b_coef:.1f})"
+                })
+                
+            df_reg = pd.DataFrame(dados_regressao)
+            
+            chart_proj = alt.Chart(df_reg).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('Periodo:N', title='Período (Histórico + Projeção)'),
+                y=alt.Y('Valor:Q', title=f'Projeção de {variavel_proj} (R$)'),
+                color=alt.Color('Tipo:N', scale=alt.Scale(domain=['Histórico Real', f'Projeção Linear (y = {a:.1f}x + {b_coef:.1f})'], range=['#1f77b4', '#2ca02c']))
+            ).properties(height=380).interactive()
+            
+            st.altair_chart(chart_proj, use_container_width=True)
+            st.info(f"Equação de tendência aplicada: **y = {a:.2f}x + {b_coef:.2f}** (Onde 'x' é o índice do mês e 'y' é o valor estimado).")
+        else:
+            st.warning("É necessário ter pelo menos 2 meses de histórico registrados para gerar a projeção linear.")
+
+        st.markdown("---")
+
+        # ==========================================
+        # GRÁFICO 3: Gráfico de Área Acumulada (Cash Flow Acumulado)
+        # ==========================================
+        st.markdown("### 3️⃣ Gráfico de Área: Evolução do Cash Flow Acumulado")
+        st.markdown("Visualização em área destacando o saldo acumulado ao longo do tempo.")
+        
+        chart_area = alt.Chart(pivot_graf).mark_area(
+            opacity=0.5,
+            color='#2ca02c',
+            line={'color': '#2ca02c', 'strokeWidth': 3}
+        ).encode(
+            x=alt.X('AnoMes:N', title='Mês'),
+            y=alt.Y('Acumulado:Q', title='Cash Flow Acumulado (R$)'),
+            tooltip=['AnoMes', 'Acumulado', 'CashFlow']
+        ).properties(height=350).interactive()
+        
+        st.altair_chart(chart_area, use_container_width=True)
+
+        st.markdown("---")
+
+        # ==========================================
+        # GRÁFICO 4: Dispersão / Correlação (Scatter Plot)
+        # ==========================================
+        st.markdown("### 4️⃣ Gráfico de Dispersão: Relação Receitas vs Despesas Mensais")
+        st.markdown("Permite identificar rapidamente a proporção e pontos fora da curva entre entradas e saídas.")
+        
+        chart_scatter = alt.Chart(pivot_graf).mark_circle(size=120).encode(
+            x=alt.X('Despesa:Q', title='Despesas do Mês (R$)'),
+            y=alt.Y('Receita:Q', title='Receitas do Mês (R$)'),
+            color=alt.Color('AnoMes:N', title='Mês'),
+            tooltip=['AnoMes', 'Despesa', 'Receita', 'CashFlow']
+        ).properties(height=350).interactive()
+        
+        st.altair_chart(chart_scatter, use_container_width=True)
+        
+    else:
+        st.info("Nenhum lançamento registrado para exibir os gráficos e projeções.")
+
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria do Mês Atual)")
     st.markdown("Acompanhamento estrito do mês atual por categoria: **Budget** vs **Entry (Efetivado/Realizado)** e a **Diferença**.")
@@ -202,23 +336,19 @@ elif aba == "Monthly Audit":
         ano_atual = datetime.today().year
         mes_atual = datetime.today().month
         
-        # Filtro estrito para o mês atual e tipo Despesa
         df_mes = df[(df["Data"].dt.year == ano_atual) & (df["Data"].dt.month == mes_atual) & (df["Tipo"] == "Despesa")]
         
         if not df_mes.empty:
-            # Separar Budget do Mês
             df_budget_mes = df_mes[df_mes["Status"] == "Budget"].groupby("Categoria")["Valor"].sum()
-            # Separar Entry (Efetivado) do Mês
             df_entry_mes = df_mes[df_mes["Status"] == "Efetivado"].groupby("Categoria")["Valor"].sum()
             
-            # Unir categorias existentes no mês
             todas_categorias = sorted(list(set(df_budget_mes.index.tolist() + df_entry_mes.index.tolist())))
             
             dados_audit = []
             for cat in todas_categorias:
                 b_val = df_budget_mes.get(cat, 0.0)
                 e_val = df_entry_mes.get(cat, 0.0)
-                dif_val = b_val - e_val  # Budget - Entry
+                dif_val = b_val - e_val
                 
                 if dif_val < 0:
                     status_pagamento = f"⚠️ Estourado/Pendente (R$ {abs(dif_val):,.2f} acima)"
@@ -235,7 +365,6 @@ elif aba == "Monthly Audit":
                 
             df_audit_table = pd.DataFrame(dados_audit).set_index("Categoria")
             
-            # Formatar colunas monetárias para exibição correta com cores
             df_audit_fmt = df_audit_table.copy()
             df_audit_fmt["1. Budget (Mês)"] = df_audit_fmt["1. Budget (Mês)"].apply(lambda x: f"R$ {x:,.2f}")
             df_audit_fmt["2. Entry (Efetivado)"] = df_audit_fmt["2. Entry (Efetivado)"].apply(lambda x: f"R$ {x:,.2f}")
@@ -243,12 +372,10 @@ elif aba == "Monthly Audit":
             
             st.dataframe(df_audit_fmt.style.map(colorir_negativos, subset=["3. Diferença (Budget - Entry)"]), use_container_width=True)
             
-            # Alertas adicionais de despesas vencidas ou pendentes no mês atual
             hoje_dt = pd.to_datetime(datetime.today().date())
             vencidas_mes = df_mes[(df_mes["Status"] == "Budget") & (df_mes["Data"] < hoje_dt)]
             if not vencidas_mes.empty:
                 st.markdown("### ⚠️ Alerta de Contas Vencidas (Budget Pendente no Mês)")
-                st.markdown("As seguintes despesas planejadas no mês atual já passaram da data de hoje e continuam como 'Budget' (não efetivadas):")
                 df_venc_fmt = vencidas_mes[["Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
                 df_venc_fmt["Valor"] = df_venc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
                 st.dataframe(df_venc_fmt, use_container_width=True)
@@ -271,10 +398,7 @@ elif aba == "Financial Indicators":
         
         meses = sorted(df_b["AnoMes"].unique())
         
-        # --- TABELA 1: INDICADORES 1, 2 e 3 (Burn Rate/Runway, DSCR, CV) ---
         st.markdown("### 🚀 Strategic Metrics (1 a 3)")
-        st.markdown("Visão estruturada com os meses na vertical e os indicadores 1, 2 e 3 na horizontal.")
-        
         dados_avancados_3 = []
         for m in meses:
             df_m = df_b[df_b["AnoMes"] == m]
@@ -323,31 +447,22 @@ elif aba == "Financial Indicators":
                 "3. Coeficiente de Variação (CV)": cv_final
             })
             
-        df_adv_table = pd.DataFrame(dados_avancados_3).set_index("Mês")
-        st.dataframe(df_adv_table, use_container_width=True)
+        st.dataframe(pd.DataFrame(dados_avancados_3).set_index("Mês"), use_container_width=True)
 
         st.markdown("---")
-
-        # --- TABELA 2: INDICADORES 4, 5 e 6 (Cash Ratio, Net Savings Rate, VaR) ---
         st.markdown("### 🛡️ Liquidity, Savings & Risk Metrics (4 a 6)")
-        st.markdown("Indicadores avançados de Liquidez Imediata, Taxa de Poupança Líquida e VaR (Value at Risk - 95%).")
-
         dados_avancados_4_6 = []
         for m in meses:
             df_m = df_b[df_b["AnoMes"] == m]
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
             expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            
             contas_liquidas = df_m[(df_m["Tipo"] == "Receita") & (~df_m["Conta"].isin(st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []))]["Valor"].sum()
             cash_ratio = (contas_liquidas / expense) if expense > 0 else 0.0
             cash_ratio_str = f"{cash_ratio:.2f}x (Coberto)" if cash_ratio >= 1.0 else f"{cash_ratio:.2f}x (⚠️ Ajuste Caixa)"
-
             net_savings = ((income - expense) / income * 100) if income > 0 else 0.0
             net_savings_str = f"{net_savings:.1f}%"
-
             df_hist_exp = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
             series_exp_hist = df_hist_exp.groupby("AnoMes")["Valor"].sum()
-            
             if len(series_exp_hist) > 1:
                 media_exp = series_exp_hist.mean()
                 desv_exp = series_exp_hist.std()
@@ -355,65 +470,48 @@ elif aba == "Financial Indicators":
                 var_str = f"R$ {var_95:,.2f}"
             else:
                 var_str = "R$ 0,00 (Histórico Insuficiente)"
-
             dados_avancados_4_6.append({
                 "Mês": m,
                 "4. Cash Ratio (Liquidez Imediata)": cash_ratio_str,
                 "5. Net Savings Rate (Taxa de Poupança)": net_savings_str,
                 "6. Value at Risk (VaR 95%)": var_str
             })
-
-        df_adv_table_2 = pd.DataFrame(dados_avancados_4_6).set_index("Mês")
-        st.dataframe(df_adv_table_2, use_container_width=True)
+        st.dataframe(pd.DataFrame(dados_avancados_4_6).set_index("Mês"), use_container_width=True)
 
         st.markdown("---")
-
-        # --- TABELA 3: INDICADORES 7, 8 e 9 (Interest Coverage, ROA Pessoal, Debt-to-Income) ---
         st.markdown("### 🏛️ Advanced Financial & Leverage Metrics (7 a 9)")
-        st.markdown("Indicadores de Cobertura de Juros, Rentabilidade dos Ativos (ROA) e Endividamento da Renda (DTI).")
-
         dados_avancados_7_9 = []
         for m in meses:
             df_m = df_b[df_b["AnoMes"] == m]
             income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
             expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            
             juros_mes = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("juros|interest|financiamento", case=False, na=False))]["Valor"].sum()
-            
             if juros_mes > 0:
                 interest_coverage = income / juros_mes
                 interest_cov_str = f"{interest_coverage:.2f}x (Seguro > 3.0)" if interest_coverage >= 3.0 else f"{interest_coverage:.2f}x (⚠️ Alerta < 3.0)"
             else:
                 interest_cov_str = "N/A (Sem Encargos de Juros)"
-
             df_ate_mes = df_b[df_b["AnoMes"] <= m]
             ativos_totais = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
             net_income_mes = income - expense
-            
             if ativos_totais > 0:
                 roa_val = (net_income_mes / ativos_totais) * 100
                 roa_str = f"{roa_val:.2f}%"
             else:
                 roa_str = "0.00% (Ativos Base Zerados)"
-
             debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
             credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
             total_obrigacoes = debts + credit_card
-            
             dti_val = (total_obrigacoes / income * 100) if income > 0 else 0.0
             dti_str = f"{dti_val:.1f}% (⚠️ Alto > 40%)" if dti_val > 40.0 else f"{dti_val:.1f}% (Saudável <= 40%)"
-
             dados_avancados_7_9.append({
                 "Mês": m,
                 "7. Interest Coverage (Cobertura de Juros)": interest_cov_str,
                 "8. ROA Pessoal (Retorno sobre Ativos)": roa_str,
                 "9. Debt-to-Income (Endividamento - DTI)": dti_str
             })
-
-        df_adv_table_3 = pd.DataFrame(dados_avancados_7_9).set_index("Mês")
-        st.dataframe(df_adv_table_3, use_container_width=True)
-        
+        st.dataframe(pd.DataFrame(dados_avancados_7_9).set_index("Mês"), use_container_width=True)
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
 
@@ -469,180 +567,13 @@ elif aba == "Statistical Indicators":
                     "Interpretação": interpretacao
                 })
                 
-            df_statistical = pd.DataFrame(dados_stats).set_index("Mês")
             st.markdown("### 📌 Z-Score e Desvio Padrão Mensal (Expenses)")
-            st.dataframe(df_statistical.style.map(colorir_negativos), use_container_width=True)
-            
-            st.markdown("---")
-            st.markdown("### 📈 Advanced Distribution Metrics (Skew, Kurtosis & Trend Slope)")
-            
-            vals_array = valores_exp.values
-            n_val = len(vals_array)
-            skew_val = float(pd.Series(vals_array).skew()) if n_val >= 3 else 0.0
-            kurt_val = float(pd.Series(vals_array).kurtosis()) if n_val >= 3 else 0.0
-            
-            if n_val >= 2:
-                x_idx = np.arange(n_val)
-                slope, intercept = np.polyfit(x_idx, vals_array, 1)
-            else:
-                slope = 0.0
-                
-            skew_interp = "Assimetria Positiva" if skew_val > 0.5 else ("Assimetria Negativa" if skew_val < -0.5 else "Simétrica")
-            kurt_interp = "Curtose Alta (Leptocúrtica)" if kurt_val > 1.0 else ("Curtose Baixa" if kurt_val < -1.0 else "Moderada")
-            slope_interp = "Tendência de Alta" if slope > 0 else ("Tendência de Queda" if slope < 0 else "Estável")
-            
-            dados_avancados = []
-            for idx, row in pivot_mensal.iterrows():
-                m = row["AnoMes"]
-                dados_avancados.append({
-                    "Mês": m,
-                    "Skewness": round(skew_val, 2),
-                    "Kurtosis": round(kurt_val, 2),
-                    "Trend Slope": f"R$ {slope:,.2f}/mês",
-                    "Interpretação Avançada": f"Skew: {skew_interp} | Kurt: {kurt_interp} | Tendência: {slope_interp}"
-                })
-                
-            df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
-            st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
-
-            # TABELA: 4 PARÂMETROS ESTATÍSTICOS AVANÇADOS
-            st.markdown("---")
-            st.markdown("### 🔬 Deep Statistical Metrics (Gini, Autocorrelação, VaR 99% & Normalidade)")
-            st.markdown("Parâmetros avançados de concentração, dependência temporal, risco extremo e aderência à distribuição normal.")
-
-            dados_deep_stats = []
-            series_exp_historico = pivot_mensal["Expense"]
-            
-            if len(series_exp_historico) >= 3:
-                autocorr_val = series_exp_historico.autocorr(lag=1)
-                if pd.isna(autocorr_val):
-                    autocorr_val = 0.0
-            else:
-                autocorr_val = 0.0
-
-            if len(series_exp_historico) > 1 and desvio_padrao > 0:
-                var_99 = media_geral + (2.326 * desvio_padrao)
-            else:
-                var_99 = media_geral
-
-            if n_val >= 4:
-                jb_stat = (n_val / 6.0) * ((skew_val ** 2) + ((kurt_val ** 2) / 4.0))
-                normal_passed = jb_stat < 5.99
-            else:
-                jb_stat = 0.0
-                normal_passed = True
-
-            for idx, row in pivot_mensal.iterrows():
-                m = row["AnoMes"]
-                df_mes_cat = df_b[(df_b["AnoMes"] == m) & (df_b["Tipo"] == "Despesa")]
-                if not df_mes_cat.empty:
-                    gastos_cat = sorted(df_mes_cat.groupby("Categoria")["Valor"].sum().values)
-                    n_cats = len(gastos_cat)
-                    if n_cats > 1 and sum(gastos_cat) > 0:
-                        acum = sum((i + 1) * val for i, val in enumerate(gastos_cat))
-                        gini_val = (2 * acum) / (n_cats * sum(gastos_cat)) - (n_cats + 1) / n_cats
-                        gini_val = max(0.0, min(1.0, gini_val))
-                    else:
-                        gini_val = 0.0
-                else:
-                    gini_val = 0.0
-
-                if gini_val > 0.6:
-                    gini_interp = f"Gini {gini_val:.2f} (⚠️ Alta Concentração)"
-                elif gini_val > 0.3:
-                    gini_interp = f"Gini {gini_val:.2f} (Concentração Moderada)"
-                else:
-                    gini_interp = f"Gini {gini_val:.2f} (✅ Bem Diversificado)"
-
-                if autocorr_val > 0.5:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alta Inércia)"
-                elif autocorr_val < -0.3:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alternado)"
-                else:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Estocástico)"
-
-                var_interp = f"R$ {var_99:,.2f} (Pior caso 99%)"
-
-                if normal_passed:
-                    norm_interp = f"JB: {jb_stat:.2f} (✅ Normalidade OK)"
-                else:
-                    norm_interp = f"JB: {jb_stat:.2f} (⚠️ Caudas Pesadas)"
-
-                dados_deep_stats.append({
-                    "Mês": m,
-                    "1. Coeficiente de Gini": gini_interp,
-                    "2. Autocorrelação (Lag-1)": autocorr_interp,
-                    "3. Value at Risk (VaR 99%)": var_interp,
-                    "4. Teste de Normalidade (Jarque-Bera)": norm_interp
-                })
-
-            df_deep_table = pd.DataFrame(dados_deep_stats).set_index("Mês")
-            st.dataframe(df_deep_table, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
-            st.markdown("Selecione a métrica desejada para analisar a curva de distribuição estatística baseada em desvios padrão.")
-            
-            col_sel1, col_sel2 = st.columns([2, 2])
-            with col_sel1:
-                metrica_selecionada = st.selectbox("Escolha a Variável para Análise:", ["Expense", "Income", "Cash Flow", "Acumulado"])
-            with col_sel2:
-                mes_selecionado = st.selectbox("Escolha o Mês de Referência:", pivot_mensal["AnoMes"].tolist())
-                
-            serie_dados = pivot_mensal[metrica_selecionada]
-            media_s = serie_dados.mean()
-            desvio_s = serie_dados.std() if len(serie_dados) > 1 else 1.0
-            if desvio_s == 0:
-                desvio_s = 1.0 
-                
-            val_mes_atual = float(pivot_mensal[pivot_mensal["AnoMes"] == mes_selecionado][metrica_selecionada].values[0])
-            
-            z_steps = np.arange(-3.0, 3.1, 0.1)
-            bell_data = []
-            
-            for z in z_steps:
-                x_val = media_s + (z * desvio_s)
-                pdf_val = (1 / (desvio_s * np.sqrt(2 * np.pi))) * np.exp(-0.5 * (z ** 2))
-                
-                bell_data.append({
-                    "Z_Score": round(z, 1),
-                    "Valor_Real": x_val,
-                    "Probabilidade": pdf_val
-                })
-                
-            df_bell = pd.DataFrame(bell_data)
-            
-            base_bell = alt.Chart(df_bell).encode(
-                x=alt.X('Valor_Real:Q', title=f'Valores de {metrica_selecionada} (R$)'),
-                y=alt.Y('Probabilidade:Q', title='Densidade de Probabilidade')
-            )
-            
-            curva_sino = base_bell.mark_area(
-                opacity=0.4,
-                color='#1f77b4',
-                line={'color': '#1f77b4', 'strokeWidth': 3}
-            ).properties(height=350)
-            
-            df_ponto = pd.DataFrame([{"Valor_Real": val_mes_atual, "Mes": mes_selecionado}])
-            linha_atual = alt.Chart(df_ponto).mark_rule(color='#ff4b4b', strokeWidth=3, strokeDash=[4, 4]).encode(
-                x='Valor_Real:Q',
-                tooltip=['Mes', 'Valor_Real']
-            )
-            
-            grafico_final_sino = (curva_sino + linha_atual).interactive()
-            st.altair_chart(grafico_final_sino, use_container_width=True)
-            
-            st.info(f"📍 **Análise do Mês ({mes_selecionado})**: O valor atual de **{metrica_selecionada}** é **R$ {val_mes_atual:,.2f}**. A média histórica é de **R$ {media_s:,.2f}** com desvio padrão de **R$ {desvio_s:,.2f}**.")
-            
-        else:
-            st.info("Nenhuma despesa em Budget registrada para gerar estatísticas.")
+            st.dataframe(pd.DataFrame(dados_stats).set_index("Mês").style.map(colorir_negativos), use_container_width=True)
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores estatísticos.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
-    st.markdown("Preencha os campos abaixo para cadastrar uma nova movimentação.")
-    
     col_a, col_b = st.columns(2)
     with col_a:
         tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
@@ -745,7 +676,7 @@ elif aba == "Cadastro (Form)":
                     st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
                     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
-            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso! Regras de fechamento e limite aplicadas.")
+            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos")
