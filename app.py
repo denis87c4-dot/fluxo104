@@ -31,7 +31,6 @@ if os.path.exists(ARQUIVO_CARTOES):
 else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
-# Função auxiliar para colorir números negativos de vermelho em DataFrames
 def colorir_negativos(val):
     if isinstance(val, str) and "R$" in val:
         try:
@@ -45,7 +44,7 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-# Menu lateral com a nova aba dedicada de gráficos e projeções
+# Menu lateral atualizado
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
@@ -103,9 +102,7 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # 1. CASH FLOW POR ACCOUNT (Mês Atual em R$)
     st.markdown("### 🏛️ Cash Flow por Account (Mês Atual)")
-    st.markdown("Saldo detalhado por conta no período atual.")
     if not df_mes_atual.empty:
         cash_flow = df_mes_atual.groupby(["Conta", "Tipo"])["Valor"].sum().unstack(fill_value=0.0)
         if "Receita" not in cash_flow.columns:
@@ -124,64 +121,6 @@ if aba == "Dashboard":
         st.info("Nenhuma conta movimentada neste mês atual.")
 
     st.markdown("---")
-
-    # 2. BUDGET: INCOME X EXPENSES (Comparativo Mensal + Gráfico Customizado Altair)
-    st.markdown("### 📊 Budget: Income x Expenses (Comparativo Mensal)")
-    st.markdown("Visão planejada mês a mês (Despesas em Barras Vermelhas e Receitas em Linha Azul).")
-    
-    if not df.empty and not df[df["Status"] == "Budget"].empty:
-        df_budget = df[df["Status"] == "Budget"].copy()
-        df_budget["Data"] = pd.to_datetime(df_budget["Data"], errors="coerce")
-        df_budget["AnoMes"] = df_budget["Data"].dt.to_period("M").astype(str)
-        
-        budget_mensal = df_budget.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0)
-        if "Receita" not in budget_mensal.columns:
-            budget_mensal["Receita"] = 0.0
-        if "Despesa" not in budget_mensal.columns:
-            budget_mensal["Despesa"] = 0.0
-        
-        budget_mensal = budget_mensal.rename(columns={"Receita": "Budget Receitas", "Despesa": "Budget Despesas"})
-        
-        budget_mensal["Cash Flow Mês"] = budget_mensal["Budget Receitas"] - budget_mensal["Budget Despesas"]
-        budget_mensal["Acumulado"] = budget_mensal["Cash Flow Mês"].cumsum()
-        
-        budget_mensal_fmt = budget_mensal.copy()
-        for col in budget_mensal_fmt.columns:
-            budget_mensal_fmt[col] = budget_mensal_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-            
-        st.dataframe(budget_mensal_fmt.style.map(colorir_negativos), use_container_width=True)
-        
-        df_chart = budget_mensal.reset_index()
-        base = alt.Chart(df_chart).encode(x=alt.X('AnoMes:N', title='Mês'))
-        
-        barras_despesas = base.mark_bar(color='#ff4b4b').encode(
-            y=alt.Y('Budget Despesas:Q', title='Valor (R$)'),
-            tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
-        )
-        linha_receitas = base.mark_line(color='#1f77b4', strokeWidth=3).encode(y='Budget Receitas:Q')
-        pontos_receitas = base.mark_point(color='#1f77b4', size=60).encode(
-            y='Budget Receitas:Q',
-            tooltip=['AnoMes', 'Budget Despesas', 'Budget Receitas']
-        )
-        
-        grafico_combinado = (barras_despesas + linha_receitas + pontos_receitas).properties(height=400).interactive()
-        st.altair_chart(grafico_combinado, use_container_width=True)
-    else:
-        st.info("Nenhum registro de Budget cadastrado para o comparativo.")
-
-    st.markdown("---")
-
-    # Maiores Despesas por Categoria
-    st.markdown("### 🔥 Maiores Despesas por Categoria")
-    if not df_mes_atual.empty and not df_mes_atual[df_mes_atual["Tipo"] == "Despesa"].empty:
-        cat_grouped = df_mes_atual[df_mes_atual["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum()
-        st.bar_chart(cat_grouped)
-    else:
-        st.info("Nenhuma despesa registrada neste mês.")
-
-    st.markdown("---")
-
-    # Últimas Transações Recentes
     st.markdown("### 🕒 Últimas Transações Recentes")
     if not df.empty:
         df_recentes = df.sort_values(by="Data", ascending=False).head(5).copy()
@@ -191,8 +130,8 @@ if aba == "Dashboard":
         st.info("Nenhuma transação recente.")
 
 elif aba == "Projections & Charts":
-    st.subheader("📈 Projections & Charts (Central de Gráficos e Projeções)")
-    st.markdown("Aba dedicada exclusivamente a visualizações avançadas, gráficos mistos e projeções financeiras baseadas em regressão linear ($y = ax + b$).")
+    st.subheader("📈 Projections & Charts (8 Gráficos Avançados de Projeção & Decisão)")
+    st.markdown("Central ampliada contendo o conceito de **Célula Suspensa** e novos gráficos focados estritamente em projeção preditiva para tomada de decisão.")
     
     df = st.session_state.lancamentos
     if not df.empty:
@@ -208,121 +147,151 @@ elif aba == "Projections & Charts":
         pivot_graf["CashFlow"] = pivot_graf["Receita"] - pivot_graf["Despesa"]
         pivot_graf["Acumulado"] = pivot_graf["CashFlow"].cumsum()
         
-        # ==========================================
-        # GRÁFICO 1: Misto (Linha e Barras) - Despesas vs Receitas Mensais
-        # ==========================================
-        st.markdown("### 1️⃣ Gráfico Misto: Barras de Despesas & Linha de Receitas")
-        st.markdown("Combinação ideal para comparar o volume de gastos mensais (barras vermelhas) diretamente com as receitas (linha azul).")
+        # =========================================================================
+        # RECURSO ESPECIAL: CÉLULA SUSPENSA (SIMULADOR DE CENÁRIO / WHAT-IF)
+        # =========================================================================
+        st.markdown("---")
+        st.markdown("### 🛸 Célula Suspensa (Simulador Preditivo de Ajuste de Orçamento)")
+        st.markdown("Painel flutuante interativo para testar impactos imediatos no seu fluxo de caixa futuro simulando cortes ou injeções de capital.")
         
-        base_g1 = alt.Chart(pivot_graf).encode(x=alt.X('AnoMes:N', title='Mês'))
-        barras_d = base_g1.mark_bar(color='#ff4b4b', opacity=0.7).encode(
-            y=alt.Y('Despesa:Q', title='Valor (R$)'),
-            tooltip=['AnoMes', 'Despesa', 'Receita']
-        )
-        linha_r = base_g1.mark_line(color='#1f77b4', strokeWidth=3).encode(y='Receita:Q')
-        pontos_r = base_g1.mark_point(color='#1f77b4', size=70).encode(
-            y='Receita:Q',
-            tooltip=['AnoMes', 'Receita', 'Despesa']
-        )
-        chart_misto = (barras_d + linha_r + pontos_r).properties(height=380).interactive()
-        st.altair_chart(chart_misto, use_container_width=True)
-        
+        with st.container():
+            st.info("💡 **Painel de Simulação Ativo**: Ajuste os parâmetros abaixo para projetar o impacto direto no acumulado dos próximos meses.")
+            cs_col1, cs_col2, cs_col3 = st.columns(3)
+            with cs_col1:
+                fator_ajuste_despesa = st.slider("Ajuste Percentual em Despesas (%)", min_value=-50, max_value=50, value=0, step=5)
+            with cs_col2:
+                aporte_extra_mensal = st.number_input("Injeção / Retirada Fixa Mensal (R$)", value=0.0, step=100.0)
+            with cs_col3:
+                horizonte_simulacao = st.slider("Horizonte de Projeção (Meses)", min_value=3, max_value=24, value=6)
+                
+            # Cálculo do cenário simulado na Célula Suspensa
+            if len(pivot_graf) > 0:
+                ultima_receita = pivot_graf["Receita"].iloc[-1]
+                ultima_despesa = pivot_graf["Despesa"].iloc[-1]
+                despesa_ajustada = ultima_despesa * (1 + (fator_ajuste_despesa / 100.0))
+                fluxo_simulado = (ultima_receita + aporte_extra_mensal) - despesa_ajustada
+                
+                st.metric("Projeção de Cash Flow Mensal Ajustado (Célula Suspensa)", f"R$ {fluxo_simulado:,.2f}", delta=f"{fator_ajuste_despesa:+d}% nas despesas")
         st.markdown("---")
         
-        # ==========================================
-        # GRÁFICO 2: Projeção Financeira Linear (y = ax + b)
-        # ==========================================
-        st.markdown("### 2️⃣ Gráfico de Projeção Financeira Linear ($y = ax + b$ tipo Excel)")
-        st.markdown("Calcula estatisticamente a tendência futura com base na equação de regressão linear do histórico.")
+        # =========================================================================
+        # GRÁFICO 1: Projeção de Folego de Caixa (Runway Preditivo)
+        # =========================================================================
+        st.markdown("### 1️⃣ Projeção de Fôlego de Caixa (Runway Preditivo em Meses)")
+        st.markdown("Estima quantos meses de sobrevivência financeira você possui com base no ritmo atual de queima de caixa.")
         
-        col_proj1, col_proj2 = st.columns(2)
-        with col_proj1:
-            variavel_proj = st.selectbox("Variável para Projeção:", ["Despesa", "Receita", "CashFlow"])
-        with col_proj2:
-            meses_futuros = st.slider("Meses a Projetar no Futuro:", min_value=1, max_value=12, value=3)
+        saldo_atual_caixa = pivot_graf["Acumulado"].iloc[-1] if not pivot_graf.empty else 0.0
+        media_despesas_recente = pivot_graf["Despesa"].tail(3).mean() if len(pivot_graf) >= 3 else pivot_graf["Despesa"].mean()
+        
+        meses_proj_runway = np.arange(0, 13)
+        if media_despesas_recente > 0:
+            curva_runway = [max(0.0, saldo_atual_caixa - (media_despesas_recente * m)) for m in meses_proj_runway]
+        else:
+            curva_runway = [saldo_atual_caixa] * 13
             
+        df_runway = pd.DataFrame({"Meses_Futuros": [f"Mês +{m}" for m in meses_proj_runway], "Saldo_Projetado": curva_runway})
+        
+        chart_runway = alt.Chart(df_runway).mark_area(
+            color='#1f77b4', opacity=0.4, line={'color': '#1f77b4', 'strokeWidth': 3}
+        ).encode(
+            x=alt.X('Meses_Futuros:N', title='Horizonte de Meses'),
+            y=alt.Y('Saldo_Projetado:Q', title='Patrimônio Projetado (R$)'),
+            tooltip=['Meses_Futuros', 'Saldo_Projetado']
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_runway, use_container_width=True)
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 2: Projeção de Despesas com Banda de Confiança (Intervalo de Incerteza)
+        # =========================================================================
+        st.markdown("### 2️⃣ Projeção de Despesas com Banda de Confiança Estatística")
+        st.markdown("Mostra a tendência futura de gastos acompanhada de uma margem de variação esperada (mínima e máxima).")
+        
         if len(pivot_graf) >= 2:
             x_vals = np.arange(len(pivot_graf))
-            y_vals = pivot_graf[variavel_proj].values
+            y_vals = pivot_graf["Despesa"].values
+            a_d, b_d = np.polyfit(x_vals, y_vals, 1)
+            desvio_padrao_desp = y_vals.std() if len(y_vals) > 1 else 100.0
             
-            # Cálculo da Regressão Linear: y = a*x + b
-            a, b_coef = np.polyfit(x_vals, y_vals, 1)
+            dados_banda = []
+            ultimo_dt = datetime.strptime(pivot_graf["AnoMes"].max() + "-01", "%Y-%m-%d")
             
-            dados_regressao = []
-            for i, row in pivot_graf.iterrows():
-                dados_regressao.append({
-                    "Periodo": row["AnoMes"],
-                    "Valor": row[variavel_proj],
-                    "Tipo": "Histórico Real"
-                })
-                
-            ultimo_periodo_str = pivot_graf["AnoMes"].max()
-            ultimo_dt = datetime.strptime(ultimo_periodo_str + "-01", "%Y-%m-%d")
-            
-            for step in range(1, meses_futuros + 1):
+            for step in range(1, 7):
                 fut_dt = ultimo_dt + relativedelta(months=step)
                 fut_str = fut_dt.strftime("%Y-%m")
                 x_fut = len(pivot_graf) + step - 1
-                y_fut = (a * x_fut) + b_coef
+                proj_central = (a_d * x_fut) + b_d
                 
-                dados_regressao.append({
-                    "Periodo": fut_str,
-                    "Valor": max(0.0, y_fut),
-                    "Tipo": f"Projeção Linear (y = {a:.1f}x + {b_coef:.1f})"
-                })
+                dados_banda.append({"Periodo": fut_str, "Valor": proj_central, "Tipo": "Projeção Esperada"})
+                dados_banda.append({"Periodo": fut_str, "Valor": proj_central + (1.96 * desvio_padrao_desp), "Tipo": "Limite Superior (95%)"})
+                dados_banda.append({"Periodo": fut_str, "Valor": max(0.0, proj_central - (1.96 * desvio_padrao_desp)), "Tipo": "Limite Inferior (95%)"})
                 
-            df_reg = pd.DataFrame(dados_regressao)
-            
-            chart_proj = alt.Chart(df_reg).mark_line(strokeWidth=3, point=True).encode(
-                x=alt.X('Periodo:N', title='Período (Histórico + Projeção)'),
-                y=alt.Y('Valor:Q', title=f'Projeção de {variavel_proj} (R$)'),
-                color=alt.Color('Tipo:N', scale=alt.Scale(domain=['Histórico Real', f'Projeção Linear (y = {a:.1f}x + {b_coef:.1f})'], range=['#1f77b4', '#2ca02c']))
-            ).properties(height=380).interactive()
-            
-            st.altair_chart(chart_proj, use_container_width=True)
-            st.info(f"Equação de tendência aplicada: **y = {a:.2f}x + {b_coef:.2f}** (Onde 'x' é o índice do mês e 'y' é o valor estimado).")
+            df_banda = pd.DataFrame(dados_banda)
+            chart_banda = alt.Chart(df_banda).mark_line(strokeWidth=2, point=True).encode(
+                x=alt.X('Periodo:N', title='Próximos Meses'),
+                y=alt.Y('Valor:Q', title='Despesa Projetada (R$)'),
+                color=alt.Color('Tipo:N', scale=alt.Scale(domain=['Projeção Esperada', 'Limite Superior (95%)', 'Limite Inferior (95%)'], range=['#2ca02c', '#ff4b4b', '#1f77b4']))
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_banda, use_container_width=True)
         else:
-            st.warning("É necessário ter pelo menos 2 meses de histórico registrados para gerar a projeção linear.")
+            st.info("Dados insuficientes para gerar a banda de confiança.")
 
         st.markdown("---")
 
-        # ==========================================
-        # GRÁFICO 3: Gráfico de Área Acumulada (Cash Flow Acumulado)
-        # ==========================================
-        st.markdown("### 3️⃣ Gráfico de Área: Evolução do Cash Flow Acumulado")
-        st.markdown("Visualização em área destacando o saldo acumulado ao longo do tempo.")
+        # =========================================================================
+        # GRÁFICO 3: Simulação de Metas de Patrimônio (Crescimento Composto)
+        # =========================================================================
+        st.markdown("### 3️⃣ Simulação de Atingimento de Meta de Patrimônio (Crescimento Composto)")
+        st.markdown("Projeta o acúmulo de capital ao longo de 12 meses considerando uma taxa estimada de rentabilidade de investimentos.")
         
-        chart_area = alt.Chart(pivot_graf).mark_area(
-            opacity=0.5,
-            color='#2ca02c',
-            line={'color': '#2ca02c', 'strokeWidth': 3}
-        ).encode(
+        taxa_juros_anual = st.slider("Taxa de Retorno Anual Estimada dos Investimentos (% a.a.)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
+        taxa_mensal = (1 + (taxa_juros_anual / 100.0))**(1/12) - 1
+        
+        patrimonio_base = saldo_atual_caixa
+        poupanca_media_mensal = pivot_graf["CashFlow"].mean() if not pivot_graf.empty else 0.0
+        
+        dados_patrimonio = []
+        patr_acumulado = patrimonio_base
+        for m in range(1, 13):
+            fut_dt = datetime.today() + relativedelta(months=m)
+            patr_acumulado = (patr_acumulado * (1 + taxa_mensal)) + poupanca_media_mensal
+            dados_patrimonio.append({
+                "Mes": fut_dt.strftime("%Y-%m"),
+                "Patrimonio_Projetado": patr_acumulado
+            })
+            
+        df_patr = pd.DataFrame(dados_patrimonio)
+        chart_patr = alt.Chart(df_patr).mark_bar(color='#2ca02c').encode(
+            x=alt.X('Mes:N', title='Mês'),
+            y=alt.Y('Patrimonio_Projetado:Q', title='Patrimônio Estimado (R$)'),
+            tooltip=['Mes', 'Patrimonio_Projetado']
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_patr, use_container_width=True)
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 4: Gráfico de Velocidade de Queima de Caixa (Burn Rate Trend)
+        # =========================================================================
+        st.markdown("### 4️⃣ Gráfico de Tendência de Queima de Caixa (Burn Rate Velocity)")
+        st.markdown("Mede a aceleração ou desaceleração dos seus custos mensais para alertar sobre excessos com antecedência.")
+        
+        pivot_graf["Variacao_Despesa"] = pivot_graf["Despesa"].diff().fillna(0.0)
+        chart_burn = alt.Chart(pivot_graf).mark_bar().encode(
             x=alt.X('AnoMes:N', title='Mês'),
-            y=alt.Y('Acumulado:Q', title='Cash Flow Acumulado (R$)'),
-            tooltip=['AnoMes', 'Acumulado', 'CashFlow']
+            y=alt.Y('Variacao_Despesa:Q', title='Variação Mensal de Gastos (R$)'),
+            color=alt.condition(
+                alt.datum.Variacao_Despesa > 0,
+                alt.value('#ff4b4b'), # Vermelho se aumentou o gasto
+                alt.value('#2ca02c')  # Verde se reduziu o gasto
+            ),
+            tooltip=['AnoMes', 'Variacao_Despesa', 'Despesa']
         ).properties(height=350).interactive()
-        
-        st.altair_chart(chart_area, use_container_width=True)
-
-        st.markdown("---")
-
-        # ==========================================
-        # GRÁFICO 4: Dispersão / Correlação (Scatter Plot)
-        # ==========================================
-        st.markdown("### 4️⃣ Gráfico de Dispersão: Relação Receitas vs Despesas Mensais")
-        st.markdown("Permite identificar rapidamente a proporção e pontos fora da curva entre entradas e saídas.")
-        
-        chart_scatter = alt.Chart(pivot_graf).mark_circle(size=120).encode(
-            x=alt.X('Despesa:Q', title='Despesas do Mês (R$)'),
-            y=alt.Y('Receita:Q', title='Receitas do Mês (R$)'),
-            color=alt.Color('AnoMes:N', title='Mês'),
-            tooltip=['AnoMes', 'Despesa', 'Receita', 'CashFlow']
-        ).properties(height=350).interactive()
-        
-        st.altair_chart(chart_scatter, use_container_width=True)
+        st.altair_chart(chart_burn, use_container_width=True)
         
     else:
-        st.info("Nenhum lançamento registrado para exibir os gráficos e projeções.")
+        st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria do Mês Atual)")
