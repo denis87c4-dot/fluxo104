@@ -114,7 +114,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Cards de Métricas Principais Executivos
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
@@ -127,7 +126,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Ações Rápidas para Despesas Vencidas
     if not df.empty and not df_vencidas.empty:
         with st.expander("⚡ Ações Rápidas: Regularizar Despesa Vencida"):
             st.write("Selecione uma despesa vencida abaixo para efetivá-la instantaneamente:")
@@ -140,7 +138,6 @@ if aba == "Dashboard":
                 st.success("Despesa atualizada para Efetivado com sucesso!")
                 st.rerun()
 
-    # Executive Insight Dinâmico
     if not df.empty and not df_mes_atual.empty:
         gastos_por_cat = df_mes_atual[df_mes_atual["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum()
         if not gastos_por_cat.empty:
@@ -150,7 +147,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Evolução Diária do Caixa
     st.markdown(f"### 📈 Evolução Diária do Caixa ({mes_selecionado})")
     if not df_mes_atual.empty:
         df_diario = df_mes_atual.copy()
@@ -169,7 +165,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Comprometimento do Budget
     st.markdown("### 🎯 Comprometimento da Renda (Budget - Período Selecionado)")
     renda_base = budget_receitas if budget_receitas > 0 else 1.0
     comprometimento = min((budget_despesas / renda_base) * 100, 100.0)
@@ -183,7 +178,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Cash Flow por Conta
     st.markdown("### 🏛️ Cash Flow por Account (Período Selecionado)")
     if not df_mes_atual.empty:
         cash_flow = df_mes_atual.groupby(["Conta", "Tipo"])["Valor"].sum().unstack(fill_value=0.0)
@@ -229,7 +223,6 @@ elif aba == "Projections & Charts":
         pivot_graf["CashFlow"] = pivot_graf["Receita"] - pivot_graf["Despesa"]
         pivot_graf["Acumulado"] = pivot_graf["CashFlow"].cumsum()
         
-        # CÉLULA SUSPENSA
         st.markdown("---")
         st.markdown("### 🛸 Célula Suspensa (Simulador Preditivo de Ajuste de Orçamento)")
         st.markdown("Painel flutuante interativo para testar impactos imediatos no seu fluxo de caixa futuro simulando cortes ou injeções de capital.")
@@ -253,7 +246,6 @@ elif aba == "Projections & Charts":
                 st.metric("Projeção de Cash Flow Mensal Ajustado (Célula Suspensa)", f"R$ {fluxo_simulado:,.2f}", delta=f"{fator_ajuste_despesa:+d}% nas despesas")
         st.markdown("---")
         
-        # 1. Runway Preditivo
         st.markdown("### 1️⃣ Projeção de Fôlego de Caixa (Runway Preditivo em Meses)")
         saldo_atual_caixa = pivot_graf["Acumulado"].iloc[-1] if not pivot_graf.empty else 0.0
         media_despesas_recente = pivot_graf["Despesa"].tail(3).mean() if len(pivot_graf) >= 3 else pivot_graf["Despesa"].mean()
@@ -277,7 +269,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 2. Banda de Confiança Estatística
         st.markdown("### 2️⃣ Projeção de Despesas com Banda de Confiança Estatística")
         if len(pivot_graf) >= 2:
             x_vals = np.arange(len(pivot_graf))
@@ -310,7 +301,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 3. Crescimento Composto
         st.markdown("### 3️⃣ Simulação de Atingimento de Meta de Patrimônio (Crescimento Composto)")
         taxa_juros_anual = st.slider("Taxa de Retorno Anual Estimada dos Investimentos (% a.a.)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
         taxa_mensal = (1 + (taxa_juros_anual / 100.0))**(1/12) - 1
@@ -338,7 +328,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 4. Burn Rate Velocity
         st.markdown("### 4️⃣ Gráfico de Tendência de Queima de Caixa (Burn Rate Velocity)")
         pivot_graf["Variacao_Despesa"] = pivot_graf["Despesa"].diff().fillna(0.0)
         chart_burn = alt.Chart(pivot_graf).mark_bar().encode(
@@ -355,7 +344,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 5. Curva ABC
         st.markdown("### 5️⃣ Curva ABC de Gastos (Foco em Categorias de Maior Impacto)")
         df_despesas_totais = df[df["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
         if not df_despesas_totais.empty:
@@ -372,7 +360,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 6. Alavancagem Pessoal
         st.markdown("### 6️⃣ Equilíbrio Estrutural (Custo Fixo vs Renda)")
         if "Categoria" in df.columns:
             df_fixo = df[(df["Tipo"] == "Despesa") & (df["Categoria"].str.contains("Moradia|Aluguel|Fixa|Conta|Dívida", case=False, na=False))].groupby("AnoMes")["Valor"].sum().reset_index()
@@ -392,7 +379,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 7. Milestones Independência
         st.markdown("### 7️⃣ Projeção para Independência Financeira (Milestones)")
         meta_patrimonio_indep = st.number_input("Defina sua Meta de Patrimônio para Independência (R$)", value=500000.0, step=50000.0)
         
@@ -411,7 +397,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 8. Heatmap Sazonalidade
         st.markdown("### 8️⃣ Mapa de Calor de Sazonalidade de Despesas")
         df_heatmap = df[df["Tipo"] == "Despesa"].copy()
         if not df_heatmap.empty:
@@ -432,7 +417,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 9. Monte Carlo
         st.markdown("### 9️⃣ Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)")
         st.markdown("Simula 100 trajetórias estocásticas de caixa baseadas no desvio padrão histórico para avaliar o risco de saldo negativo.")
         if len(pivot_graf) >= 2:
@@ -460,7 +444,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 10. Resilience Index
         st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
         if len(pivot_graf) > 0:
             df_res = pivot_graf.copy()
@@ -482,7 +465,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 11. Dispersão de Despesas
         st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
         df_scatter = df[df["Tipo"] == "Despesa"].copy()
         if not df_scatter.empty:
@@ -499,7 +481,6 @@ elif aba == "Projections & Charts":
 
         st.markdown("---")
 
-        # 12. Freedom Gauge
         st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
         taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
         taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
@@ -891,12 +872,48 @@ elif aba == "Cadastro (Form)":
             st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
-    st.subheader("Lista de Lançamentos")
+    st.subheader("Lista de Lançamentos & Smart Search")
+    st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente por termo, categoria, conta ou status.")
+    
     df = st.session_state.lancamentos
     if not df.empty:
-        df_lanc_fmt = df.copy()
-        df_lanc_fmt["Valor"] = df_lanc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(df_lanc_fmt.style.map(colorir_negativos), use_container_width=True)
+        # ==================== SMART SEARCH INTERFACE ====================
+        col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
+        with col_s1:
+            termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
+        with col_s2:
+            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa"])
+        with col_s3:
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado"])
+            
+        df_filtrado = df.copy()
+        
+        # Aplicando filtros de Tipo e Status
+        if filtro_tipo != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
+        if filtro_status != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
+            
+        # Aplicando Smart Search global em texto (case insensitive em Descrição, Categoria e Conta)
+        if termo_busca.strip() != "":
+            termo = termo_busca.strip().lower()
+            mask = (
+                df_filtrado["Descricao"].astype(str).str.lower().str.contains(termo, na=False) |
+                df_filtrado["Categoria"].astype(str).str.lower().str.contains(termo, na=False) |
+                df_filtrado["Conta"].astype(str).str.lower().str.contains(termo, na=False)
+            )
+            df_filtrado = df_filtrado[mask]
+            
+        st.markdown(f"Exibindo **{len(df_filtrado)}** de **{len(df)}** registros encontrados.")
+        
+        if not df_filtrado.empty:
+            df_lanc_fmt = df_filtrado.copy()
+            df_lanc_fmt["Valor"] = df_lanc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(df_lanc_fmt.style.map(colorir_negativos), use_container_width=True)
+        else:
+            st.warning("Nenhum lançamento corresponde ao filtro ou Smart Search informado.")
+            
+        st.markdown("---")
         if st.button("🗑️ Limpar Todos os Lançamentos"):
             st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
