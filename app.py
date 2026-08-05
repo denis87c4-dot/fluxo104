@@ -44,8 +44,19 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-# Menu lateral atualizado
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+# Menu lateral atualizado com a aba "Análise de Cartões" inclusa
+aba = st.sidebar.radio("Navegação", [
+    "Dashboard", 
+    "Projections & Charts", 
+    "Monthly Audit", 
+    "Financial Indicators", 
+    "Statistical Indicators", 
+    "Análise de Cartões", 
+    "Cadastro (Form)", 
+    "Lançamentos", 
+    "Cartões", 
+    "Gerenciar Categorias"
+])
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -764,6 +775,50 @@ elif aba == "Statistical Indicators":
             st.info("Requer pelo menos 3 meses registrados para calcular métricas estatísticas avançadas (Skewness/Kurtosis).")
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores estatísticos.")
+
+elif aba == "Análise de Cartões":
+    st.subheader("💳 Análise Avançada de Cartões de Crédito")
+    st.markdown("Visão consolidada das faturas, comprometimento de limite, despesas parceladas futuras e auditoria por cartão.")
+
+    df = st.session_state.lancamentos
+    df_cartoes = st.session_state.cartoes
+
+    if not df.empty and not df_cartoes.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+        # Filtra apenas transações vinculadas aos cartões cadastrados
+        nomes_cartoes = df_cartoes["Nome"].tolist()
+        df_cc = df[df["Conta"].isin(nomes_cartoes)].copy()
+
+        if not df_cc.empty:
+            st.markdown("### 📊 Faturas Atuais por Cartão")
+            resumo_cartoes = df_cc.groupby("Conta")["Valor"].sum().reset_index()
+            resumo_cartoes = resumo_cartoes.merge(df_cartoes, left_on="Conta", right_on="Nome", how="right").fillna(0.0)
+            
+            resumo_cartoes["Fatura Atual"] = resumo_cartoes["Valor"]
+            resumo_cartoes["Limite Disponível"] = resumo_cartoes["Limite"]
+            
+            tabela_exibicao = resumo_cartoes[["Conta", "Fechamento", "Vencimento", "Fatura Atual", "Limite Disponível"]].copy()
+            tabela_exibicao["Fatura Atual"] = tabela_exibicao["Fatura Atual"].apply(lambda x: f"R$ {x:,.2f}")
+            tabela_exibicao["Limite Disponível"] = tabela_exibicao["Limite Disponível"].apply(lambda x: f"R$ {x:,.2f}")
+            
+            st.dataframe(tabela_exibicao.set_index("Conta").style.map(colorir_negativos), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 🗓️ Projeção de Faturas Futuras (Parcelamentos)")
+            df_cc["AnoMes"] = df_cc["Data"].dt.to_period("M").astype(str)
+            pivot_cc = df_cc.pivot_table(index="AnoMes", columns="Conta", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
+            
+            st.dataframe(pivot_cc.set_index("AnoMes"), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 📋 Lançamentos Detalhados nos Cartões")
+            st.dataframe(df_cc[["Data", "Conta", "Descricao", "Categoria", "Valor", "Parcela", "Status"]].style.map(colorir_negativos), use_container_width=True)
+        else:
+            st.info("Nenhum lançamento foi associado aos cartões cadastrados até o momento.")
+    else:
+        st.info("Cadastre cartões e registre lançamentos vinculados a eles para visualizar a análise completa.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
