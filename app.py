@@ -179,7 +179,7 @@ if aba == "Dashboard":
     col_b1.write(f"**Renda Planejada (Budget Income):** R$ {budget_receitas:,.2f}")
     col_b2.write(f"**Total Planejado (Budget Expenses):** R$ {budget_despesas:,.2f}")
     
-    st.progress(int(comprometimento))
+    st.progress(int(max(0, min(100, comprometimento))))
     st.write(f"Comprometimento do Budget: **{comprometimento:.1f}%**")
 
     st.markdown("---")
@@ -496,7 +496,9 @@ elif aba == "Projections & Charts":
         autonomia_pct = min((renda_passiva_estimada / (media_despesas_anual if media_despesas_anual > 0 else 1.0)) * 100, 100.0)
         
         st.metric("Grau de Independência Atual", f"{autonomia_pct:.2f}% dos gastos cobertos", delta=f"R$ {renda_passiva_estimada:,.2f} / mês de renda passiva teórica")
-        st.progress(int(autonomia_pct))
+        
+        # Correção aplicada aqui (protegendo contra negativos ou valores acima de 100)
+        st.progress(int(max(0, min(100, autonomia_pct))))
         
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
