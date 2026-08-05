@@ -404,7 +404,6 @@ elif aba == "Projections & Charts":
         st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
         if len(pivot_graf) > 0:
             df_res = pivot_graf.copy()
-            # Índice calculado como proporção entre superávit e despesa, normalizado de 0 a 100
             df_res["Resiliencia"] = np.clip(((df_res["CashFlow"] / (df_res["Despesa"] + 1)) * 50) + 50, 0, 100)
             
             chart_res = alt.Chart(df_res).mark_bar().encode(
@@ -412,8 +411,8 @@ elif aba == "Projections & Charts":
                 y=alt.Y('Resiliencia:Q', title='Índice de Resiliência (0 a 100)', scale=alt.Scale(domain=[0, 100])),
                 color=alt.condition(
                     alt.datum.Resiliencia >= 50,
-                    alt.value('#2a9d8f'), # Saudável
-                    alt.value('#e76f51')  # Frágil
+                    alt.value('#2a9d8f'),
+                    alt.value('#e76f51')
                 ),
                 tooltip=['AnoMes', 'Resiliencia', 'CashFlow']
             ).properties(height=350).interactive()
@@ -651,8 +650,8 @@ elif aba == "Financial Indicators":
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
 
 elif aba == "Statistical Indicators":
-    st.subheader("📊 Statistical Indicators (Budget)")
-    st.markdown("Parâmetros estatísticos, desvio padrão, Z-score e distribuição de probabilidade em forma de sino.")
+    st.subheader("📊 Statistical Indicators & Advanced Econometrics")
+    st.markdown("Parâmetros estatísticos avançados, assimetria, curtose e detecção de outliers.")
     
     df = st.session_state.lancamentos
     if not df.empty and not df[df["Status"] == "Budget"].empty:
@@ -668,13 +667,27 @@ elif aba == "Statistical Indicators":
             
         pivot_mensal = pivot_mensal.rename(columns={"Receita": "Income", "Despesa": "Expense"})
         pivot_mensal["Cash Flow"] = pivot_mensal["Income"] - pivot_mensal["Expense"]
-        pivot_mensal["Acumulado"] = pivot_mensal["Cash Flow"].cumsum()
         pivot_mensal = pivot_mensal.reset_index().sort_values("AnoMes")
         
-        if len(pivot_mensal) > 0:
+        if len(pivot_mensal) > 2:
             valores_exp = pivot_mensal["Expense"]
             media_geral = valores_exp.mean()
             desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
+            
+            # Skewness e Curtose manuais
+            n_obs = len(valores_exp)
+            if desvio_padrao > 0 and n_obs > 2:
+                skewness = (n_obs / ((n_obs - 1) * (n_obs - 2))) * np.sum(((valores_exp - media_geral) / desvio_padrao)**3)
+                kurtosis = ((n_obs * (n_obs + 1)) / ((n_obs - 1) * (n_obs - 2) * (n_obs - 3))) * np.sum(((valores_exp - media_geral) / desvio_padrao)**4) - (3 * (n_obs - 1)**2 / ((n_obs - 2) * (n_obs - 3)))
+            else:
+                skewness, kurtosis = 0.0, 0.0
+                
+            col_stat1, col_stat2 = st.columns(2)
+            col_stat1.metric("📐 Assimetria de Gastos (Skewness)", f"{skewness:.2f}", delta="> 0 indica cauda longa à direita")
+            col_stat2.metric("⛰️ Curtose de Despesas (Kurtosis)", f"{kurtosis:.2f}", delta="Achatamento da distribuição")
+            
+            st.markdown("---")
+            st.markdown("### 📌 Z-Score, Outliers e Indicadores Mensais")
             
             dados_stats = []
             for idx, row in pivot_mensal.iterrows():
@@ -682,16 +695,14 @@ elif aba == "Statistical Indicators":
                 val = row["Expense"]
                 z_score = (val - media_geral) / desvio_padrao if desvio_padrao > 0 else 0.0
                 
-                if z_score > 1.5:
-                    interpretacao = "⚠️ Alerta: Gastos muito acima da média histórica"
-                elif z_score > 0.5:
-                    interpretacao = "⚡ Acima da média histórica"
-                elif z_score < -1.5:
-                    interpretacao = "🌟 Excelente: Muito abaixo da média"
-                elif z_score < -0.5:
-                    interpretacao = "📉 Abaixo da média histórica"
+                if abs(z_score) > 2.0:
+                    interpretacao = "🚨 Outlier Estatístico (Anomalia Severa)"
+                elif z_score > 1.0:
+                    interpretacao = "⚠️ Acima do Limiar de Confiança"
+                elif z_score < -1.0:
+                    interpretacao = "🌟 Otimizado (Excelente Economia)"
                 else:
-                    interpretacao = "✅ Dentro da normalidade esperada"
+                    interpretacao = "✅ Dentro da Banda de Normalidade"
                 
                 dados_stats.append({
                     "Mês": m,
@@ -699,11 +710,23 @@ elif aba == "Statistical Indicators":
                     "Média Histórica": f"R$ {media_geral:,.2f}",
                     "Desvio Padrão": f"R$ {desvio_padrao:,.2f}",
                     "Z-Score": round(z_score, 2),
-                    "Interpretação": interpretacao
+                    "Status Analítico": interpretacao
                 })
                 
-            st.markdown("### 📌 Z-Score e Desvio Padrão Mensal (Expenses)")
             st.dataframe(pd.DataFrame(dados_stats).set_index("Mês").style.map(colorir_negativos), use_container_width=True)
+            
+            # Gráfico de Densidade / Histograma de Gastos
+            st.markdown("---")
+            st.markdown("### 📈 Histograma de Densidade de Gastos Mensais")
+            chart_hist = alt.Chart(pivot_mensal).mark_bar(color='#264653').encode(
+                x=alt.X('Expense:Q', bin=True, title='Faixas de Despesa (R$)'),
+                y=alt.Y('count()', title='Frequência de Ocorrência (Meses)'),
+                tooltip=['count()']
+            ).properties(height=300).interactive()
+            st.altair_chart(chart_hist, use_container_width=True)
+            
+        else:
+            st.info("Requer pelo menos 3 meses registrados para calcular métricas estatísticas avançadas (Skewness/Kurtosis).")
     else:
         st.info("Nenhum dado de Budget cadastrado para calcular os indicadores estatísticos.")
 
