@@ -44,7 +44,7 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-# Menu lateral com a aba "Análise de Cartões" inclusa
+# Menu lateral atualizado com a aba "Análise de Cartões" inclusa
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", 
     "Projections & Charts", 
@@ -828,7 +828,7 @@ elif aba == "Cadastro (Form)":
     with col_b:
         status = st.selectbox("Status / Fase", ["Budget", "Efetivado"])
         
-    descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Pagamento Fatura Credshop...")
+    descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Debts...")
     
     lista_cat_opcao = st.session_state.categorias + ["+ Incluir Nova Categoria..."]
     cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
@@ -873,19 +873,6 @@ elif aba == "Cadastro (Form)":
         if descricao.strip() == "":
             st.warning("Preencha a descrição.")
         else:
-            # ==================== AUTOMAÇÃO DE PAGAMENTO DE FATURA ====================
-            desc_lower = descricao.lower()
-            pagamento_detectado = False
-            cartao_alvo_pgto = None
-            
-            if tipo == "Despesa" and status == "Efetivado" and ("pagamento fatura" in desc_lower or "fatura" in desc_lower):
-                if not st.session_state.cartoes.empty:
-                    for nome_c in st.session_state.cartoes["Nome"].tolist():
-                        if nome_c.lower() in desc_lower:
-                            pagamento_detectado = True
-                            cartao_alvo_pgto = nome_c
-                            break
-
             novos_registros = []
             dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row else 0
             
@@ -928,8 +915,7 @@ elif aba == "Cadastro (Form)":
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
             
-            # Se for compra normal em cartão, abate o limite do cartão
-            if cartao_selecionado_row is not None and not pagamento_detectado:
+            if cartao_selecionado_row is not None:
                 nome_c_alvo = cartao_selecionado_row["Nome"]
                 idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == nome_c_alvo].index
                 if not idx_cartao.empty:
@@ -938,22 +924,7 @@ elif aba == "Cadastro (Form)":
                     st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
                     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
-            # Se for pagamento de fatura detectado, devolve limite e quita faturas budget
-            if pagamento_detectado and cartao_alvo_pgto is not None:
-                idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == cartao_alvo_pgto].index
-                if not idx_cartao.empty:
-                    limite_atual = float(st.session_state.cartoes.loc[idx_cartao[0], "Limite"])
-                    novo_limite = limite_atual + valor_total
-                    st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
-                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
-                
-                # Atualiza lançamentos Budget pendentes desse cartão para Efetivado
-                mask_pendentes = (st.session_state.lancamentos["Conta"] == cartao_alvo_pgto) & (st.session_state.lancamentos["Status"] == "Budget")
-                st.session_state.lancamentos.loc[mask_pendentes, "Status"] = "Efetivado"
-                st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
-                st.success(f"💳 Pagamento identificado! Limite de '{cartao_alvo_pgto}' recomposto e compras pendentes quitadas com sucesso!")
-            else:
-                st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
+            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos & Smart Search")
@@ -1005,7 +976,7 @@ elif aba == "Lançamentos":
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
     with st.form("form_cartao"):
-        nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Credshop...")
+        nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Visa Itaú...")
         dia_fechamento = st.number_input("Dia de Fechamento da Fatura", min_value=1, max_value=31, value=10)
         limite_disponivel = st.number_input("Limite Disponível (R$)", min_value=0.0, format="%.2f", value=1000.0)
         dia_pagamento = st.number_input("Dia de Vencimento / Pagamento", min_value=1, max_value=31, value=17)
