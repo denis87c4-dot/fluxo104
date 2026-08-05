@@ -68,7 +68,14 @@ if aba == "Dashboard":
         budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
         
         hoje_dt = pd.to_datetime(datetime.today().date())
-        despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_dt)]["Valor"].sum()
+        df_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_dt)]
+        despesas_vencidas = df_vencidas["Valor"].sum()
+        
+        if not df_vencidas.empty:
+            descricoes_vencidas = ", ".join(df_vencidas["Descricao"].unique())
+            texto_vencidas_detalhe = f"<span style='color: #ff4b4b; font-weight: bold;'>R$ {despesas_vencidas:,.2f} ({descricoes_vencidas})</span>"
+        else:
+            texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
     else:
         df_mes_atual = pd.DataFrame()
         receitas_mes = 0.0
@@ -76,6 +83,7 @@ if aba == "Dashboard":
         budget_despesas = 0.0
         budget_receitas = 0.0
         despesas_vencidas = 0.0
+        texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
 
     # Cards de Métricas Principais
     col1, col2, col3 = st.columns(3)
@@ -84,7 +92,7 @@ if aba == "Dashboard":
     with col2:
         st.metric("📉 DESPESAS DO MÊS", f"R$ {despesas_mes:,.2f}", delta="Total efetivado")
     with col3:
-        st.metric("⚠️ DESPESAS VENCIDAS", f"R$ {despesas_vencidas:,.2f}", delta="Budget pendente anterior")
+        st.markdown(f"**⚠️ DESPESAS VENCIDAS**<br>{texto_vencidas_detalhe}", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -674,7 +682,6 @@ elif aba == "Statistical Indicators":
             media_geral = valores_exp.mean()
             desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
             
-            # Skewness e Curtose manuais
             n_obs = len(valores_exp)
             if desvio_padrao > 0 and n_obs > 2:
                 skewness = (n_obs / ((n_obs - 1) * (n_obs - 2))) * np.sum(((valores_exp - media_geral) / desvio_padrao)**3)
@@ -715,7 +722,6 @@ elif aba == "Statistical Indicators":
                 
             st.dataframe(pd.DataFrame(dados_stats).set_index("Mês").style.map(colorir_negativos), use_container_width=True)
             
-            # Gráfico de Densidade / Histograma de Gastos
             st.markdown("---")
             st.markdown("### 📈 Histograma de Densidade de Gastos Mensais")
             chart_hist = alt.Chart(pivot_mensal).mark_bar(color='#264653').encode(
