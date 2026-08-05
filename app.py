@@ -106,9 +106,10 @@ if aba == "Dashboard":
         else:
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
             
-        total_receitas_geral = df[df["Tipo"] == "Receita"]["Valor"].sum()
-        total_despesas_geral = df[df["Tipo"] == "Despesa"]["Valor"].sum()
-        patrimonio_liquido_global = total_receitas_geral - total_despesas_geral
+        # Patrimônio Líquido puramente Entry (Efetivado)
+        total_receitas_efetivadas_geral = df[(df["Tipo"] == "Receita") & (df["Status"] == "Efetivado")]["Valor"].sum()
+        total_despesas_efetivadas_geral = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Efetivado")]["Valor"].sum()
+        patrimonio_liquido_global = total_receitas_efetivadas_geral - total_despesas_efetivadas_geral
     else:
         df_mes_atual = pd.DataFrame()
         receitas_mes = 0.0
@@ -133,7 +134,7 @@ if aba == "Dashboard":
     with col3:
         st.markdown(f"**⚠️ DESPESAS VENCIDAS**<br>{texto_vencidas_detalhe}", unsafe_allow_html=True)
     with col4:
-        st.metric("🏛️ PATRIMÔNIO LÍQUIDO", f"R$ {patrimonio_liquido_global:,.2f}", delta="Acumulado Geral")
+        st.metric("🏛️ PATRIMÔNIO LÍQUIDO", f"R$ {patrimonio_liquido_global:,.2f}", delta="Puramente Entry (Efetivado)")
 
     st.markdown("---")
 
@@ -792,6 +793,42 @@ elif aba == "Análise de Cartões":
         df_cc = df[df["Conta"].isin(nomes_cartoes)].copy()
 
         if not df_cc.empty:
+            # Seleção de Mês para as Métricas Detalhadas do Mês e Anti-Ilusão
+            df_cc["AnoMes"] = df_cc["Data"].dt.to_period("M").astype(str)
+            meses_cc = sorted(df_cc["AnoMes"].unique().tolist(), reverse=True)
+            mes_atual_padrao = datetime.today().strftime("%Y-%m")
+            if mes_atual_padrao not in meses_cc:
+                meses_cc.insert(0, mes_atual_padrao)
+
+            col_mc1, _ = st.columns([2, 4])
+            with col_mc1:
+                mes_sel_cc = st.selectbox("📅 Período de Análise de Cartões", meses_cc, index=0)
+
+            ano_cc, mes_cc_num = map(int, mes_sel_cc.split("-"))
+            df_mes_cc = df_cc[(df_cc["Data"].dt.year == ano_cc) & (df_cc["Data"].dt.month == mes_cc_num)]
+            df_mes_geral = df[(df["Data"].dt.year == ano_cc) & (df["Data"].dt.month == mes_cc_num)]
+
+            # Renda Real em Caixa (Receitas Efetivadas) vs Gasto em Cartão (Entry e Total/Budget)
+            renda_efetiva_mes = df_mes_geral[(df_mes_geral["Tipo"] == "Receita") & (df_mes_geral["Status"] == "Efetivado")]["Valor"].sum()
+            gasto_cartao_entry = df_mes_cc[df_mes_cc["Status"] == "Efetivado"]["Valor"].sum()
+            gasto_cartao_total = df_mes_cc["Valor"].sum()
+
+            pct_cartao_renda = (gasto_cartao_total / renda_efetiva_mes * 100) if renda_efetiva_mes > 0 else 0.0
+
+            st.markdown("---")
+            st.markdown("### 🛡️ Alerta de Uso de Cartão vs Renda (Anti-Ilusão Financeira)")
+            col_al1, col_al2, col_al3 = st.columns(3)
+            with col_al1:
+                st.metric("💵 Renda Real em Caixa (Efetivada)", f"R$ {renda_efetiva_mes:,.2f}")
+            with col_al2:
+                st.metric("💳 Gasto Total em Cartão (Mês)", f"R$ {gasto_cartao_total:,.2f}", delta=f"{pct_cartao_renda:.1f}% da Renda")
+            with col_al3:
+                if pct_cartao_renda > 80.0:
+                    st.markdown("<p style='color: #ff4b4b; font-weight: bold;'>⚠️ ALERTA CRÍTICO: Comprometimento excessivo da renda por cartões!</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<p style='color: #2a9d8f; font-weight: bold;'>✅ Comprometimento de cartão saudável em relação à renda.</p>", unsafe_allow_html=True)
+
+            st.markdown("---")
             st.markdown("### 📊 Faturas Atuais por Cartão")
             resumo_cartoes = df_cc.groupby("Conta")["Valor"].sum().reset_index()
             resumo_cartoes = resumo_cartoes.merge(df_cartoes, left_on="Conta", right_on="Nome", how="right").fillna(0.0)
@@ -807,7 +844,6 @@ elif aba == "Análise de Cartões":
 
             st.markdown("---")
             st.markdown("### 🗓️ Projeção de Faturas Futuras (Parcelamentos)")
-            df_cc["AnoMes"] = df_cc["Data"].dt.to_period("M").astype(str)
             pivot_cc = df_cc.pivot_table(index="AnoMes", columns="Conta", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
             
             st.dataframe(pivot_cc.set_index("AnoMes"), use_container_width=True)
