@@ -1,4 +1,4 @@
-import streamlit as st
+Import streamlit as st
 import pandas as pd
 import numpy as np
 import os
@@ -43,16 +43,6 @@ def colorir_negativos(val):
     elif isinstance(val, (int, float)) and val < 0:
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
-
-# Função auxiliar segura para aplicar estilos em dataframes (compatível com versões recentes do Pandas/Streamlit)
-def aplicar_estilo_tabela(df_styled, subset_cols=None):
-    try:
-        if hasattr(df_styled, "map"):
-            return df_styled.map(colorir_negativos, subset=subset_cols)
-        else:
-            return df_styled.applymap(colorir_negativos, subset=subset_cols)
-    except Exception:
-        return df_styled
 
 # Menu lateral atualizado
 aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
@@ -105,6 +95,7 @@ if aba == "Dashboard":
         else:
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
             
+        # Cálculo do Fluxo de Caixa do Mês (Total Entradas menos Despesas - considerando efetivados ou geral)
         fluxo_caixa_mes = receitas_mes - despesas_mes
     else:
         df_mes_atual = pd.DataFrame()
@@ -199,7 +190,7 @@ if aba == "Dashboard":
         for col in cash_flow_fmt.columns:
             cash_flow_fmt[col] = cash_flow_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
-        st.dataframe(aplicar_estilo_tabela(cash_flow_fmt.style), use_container_width=True)
+        st.dataframe(cash_flow_fmt.style.map(colorir_negativos), use_container_width=True)
         st.bar_chart(cash_flow["Saldo Líquido"])
     else:
         st.info("Nenhuma conta movimentada neste período.")
@@ -209,13 +200,13 @@ if aba == "Dashboard":
     if not df.empty:
         df_recentes = df.sort_values(by="Data", ascending=False).head(5).copy()
         df_recentes["Valor"] = df_recentes["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(aplicar_estilo_tabela(df_recentes.style), use_container_width=True)
+        st.dataframe(df_recentes.style.map(colorir_negativos), use_container_width=True)
     else:
         st.info("Nenhuma transação recente.")
 
 elif aba == "Projections & Charts":
     st.subheader("📈 Projections & Charts (16 Gráficos e Parâmetros Avançados de Elite)")
-    st.markdown("Central completa contendo a **Célula Suspensa** e módulos analíticos de projeção, risco e inteligência financeira.")
+    st.markdown("Central completa contendo a **Célula Suspensa** e 16 módulos analíticos de projeção, risco e inteligência financeira.")
     
     df = st.session_state.lancamentos
     if not df.empty:
@@ -549,7 +540,7 @@ elif aba == "Monthly Audit":
             df_audit_fmt["2. Entry (Efetivado)"] = df_audit_fmt["2. Entry (Efetivado)"].apply(lambda x: f"R$ {x:,.2f}")
             df_audit_fmt["3. Diferença (Budget - Entry)"] = df_audit_fmt["3. Diferença (Budget - Entry)"].apply(lambda x: f"R$ {x:,.2f}")
             
-            st.dataframe(aplicar_estilo_tabela(df_audit_fmt.style, subset=["3. Diferença (Budget - Entry)"]), use_container_width=True)
+            st.dataframe(df_audit_fmt.style.map(colorir_negativos, subset=["3. Diferença (Budget - Entry)"]), use_container_width=True)
             
             hoje_dt = pd.to_datetime(datetime.today().date())
             vencidas_mes = df_mes[(df_mes["Status"] == "Budget") & (df_mes["Data"] < hoje_dt)]
@@ -757,7 +748,7 @@ elif aba == "Statistical Indicators":
                     "Status Analítico": interpretacao
                 })
                 
-            st.dataframe(aplicar_estilo_tabela(pd.DataFrame(dados_stats).set_index("Mês").style), use_container_width=True)
+            st.dataframe(pd.DataFrame(dados_stats).set_index("Mês").style.map(colorir_negativos), use_container_width=True)
             
             st.markdown("---")
             st.markdown("### 📈 Histograma de Densidade de Gastos Mensais")
@@ -885,6 +876,7 @@ elif aba == "Lançamentos":
     
     df = st.session_state.lancamentos
     if not df.empty:
+        # ==================== SMART SEARCH INTERFACE ====================
         col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
         with col_s1:
             termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
@@ -895,11 +887,13 @@ elif aba == "Lançamentos":
             
         df_filtrado = df.copy()
         
+        # Aplicando filtros de Tipo e Status
         if filtro_tipo != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
         if filtro_status != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
             
+        # Aplicando Smart Search global em texto (case insensitive em Descrição, Categoria e Conta)
         if termo_busca.strip() != "":
             termo = termo_busca.strip().lower()
             mask = (
@@ -914,7 +908,7 @@ elif aba == "Lançamentos":
         if not df_filtrado.empty:
             df_lanc_fmt = df_filtrado.copy()
             df_lanc_fmt["Valor"] = df_lanc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(aplicar_estilo_tabela(df_lanc_fmt.style), use_container_width=True)
+            st.dataframe(df_lanc_fmt.style.map(colorir_negativos), use_container_width=True)
         else:
             st.warning("Nenhum lançamento corresponde ao filtro ou Smart Search informado.")
             
@@ -950,8 +944,8 @@ elif aba == "Cartões":
     if not st.session_state.cartoes.empty:
         df_cartoes_fmt = st.session_state.cartoes.copy()
         if "Limite" in df_cartoes_fmt.columns:
-            df_cartoes_fmt["Limite"] = df_cartoes_fmt["Limite"].apply(lambda x: f5 := f"R$ {x:,.2f}")
-        st.dataframe(aplicar_estilo_tabela(df_cartoes_fmt.style), use_container_width=True)
+            df_cartoes_fmt["Limite"] = df_cartoes_fmt["Limite"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_cartoes_fmt.style.map(colorir_negativos), use_container_width=True)
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
@@ -963,3 +957,7 @@ elif aba == "Gerenciar Categorias":
             st.success("Categoria adicionada e salva!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
+
+
+
+Ease e meu codigo. Vc pode incluir em cima desse. E se quiser tirar aquela mensgaem de erro sinta se a vontade. Inclua suas melhorias aqui
