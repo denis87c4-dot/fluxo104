@@ -44,12 +44,12 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-def aplicar_estilo_tabela(df_styled, subset_cols=None):
+def aplicar_estilo_tabela(df_styled, subset=None):
     try:
         if hasattr(df_styled, "map"):
-            return df_styled.map(colorir_negativos, subset=subset_cols)
+            return df_styled.map(colorir_negativos, subset=subset)
         else:
-            return df_styled.applymap(colorir_negativos, subset=subset_cols)
+            return df_styled.applymap(colorir_negativos, subset=subset)
     except Exception:
         return df_styled
 
@@ -105,7 +105,6 @@ if aba == "Dashboard":
             
         fluxo_caixa_mes = receitas_mes - despesas_mes
 
-        # ==================== CÁLCULO DOS 4 NOVOS PARÂMETROS ====================
         net_savings_rate = ((receitas_mes - despesas_mes) / receitas_mes * 100) if receitas_mes > 0 else 0.0
         comprometimento_renda = (despesas_mes / receitas_mes * 100) if receitas_mes > 0 else 0.0
 
@@ -133,7 +132,6 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # Primeira linha de métricas principais
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
@@ -144,7 +142,6 @@ if aba == "Dashboard":
     with col4:
         st.metric("💵 FLUXO DE CAIXA", f"R$ {fluxo_caixa_mes:,.2f}", delta="Entradas - Despesas", delta_color="normal")
 
-    # Segunda linha com os 4 NOVOS PARÂMETROS solicitados
     st.markdown("### 📌 Indicadores Executivos Adicionais")
     col_n1, col_n2, col_n3, col_n4 = st.columns(4)
     with col_n1:
@@ -158,12 +155,10 @@ if aba == "Dashboard":
 
     st.markdown("---")
 
-    # ==================== NOVA TABELA DE RESUMO HISTÓRICO MENSAL ====================
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense**, **Cash Flow** e **Acumulado** ordenados temporalmente.")
     
     if not df.empty:
-        # Criando tabela pivot com base em todos os lançamentos efetivados/gerais por mês
         df_hist = df.copy()
         pivot_hist = df_hist.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
         
@@ -178,10 +173,8 @@ if aba == "Dashboard":
         pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense"]
         pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
         
-        # Reordenando colunas estritamente na ordem solicitada: Mês, Income, Expense, Cash flow, Acumulado
         pivot_hist = pivot_hist[["Mês", "Income", "Expense", "Cash Flow", "Acumulado"]]
         
-        # Formatando valores monetários para exibição
         pivot_hist_fmt = pivot_hist.copy()
         for col in ["Income", "Expense", "Cash Flow", "Acumulado"]:
             pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
@@ -190,7 +183,6 @@ if aba == "Dashboard":
         
         st.markdown("---")
         
-        # ==================== DOIS GRÁFICOS COMPARATIVOS DE LINHAS ====================
         st.markdown("### 📈 Gráficos Comparativos de Evolução")
         
         col_g1, col_g2 = st.columns(2)
