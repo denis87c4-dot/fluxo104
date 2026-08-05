@@ -105,19 +105,12 @@ if aba == "Dashboard":
             
         fluxo_caixa_mes = receitas_mes - despesas_mes
 
-        # ==================== CÁLCULO DOS 4 NOVOS PARÂMETROS ====================
-        # 1. Taxa de Poupança (Net Savings Rate): ((Receitas - Despesas) / Receitas) * 100
+        # ==================== CÁLCULO DOS 4 PARÂMETROS ====================
         net_savings_rate = ((receitas_mes - despesas_mes) / receitas_mes * 100) if receitas_mes > 0 else 0.0
-
-        # 2. Comprometimento de Renda (Budget vs Despesas Efetivadas)
         comprometimento_renda = (despesas_mes / receitas_mes * 100) if receitas_mes > 0 else 0.0
-
-        # 3. Índice de Liquidez / Cash Ratio (Contas líquidas / Despesas do mês)
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         contas_liquidas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (~df_mes_atual["Conta"].isin(cartoes_nomes))]["Valor"].sum()
         cash_ratio_val = (contas_liquidas_mes / despesas_mes) if despesas_mes > 0 else 0.0
-
-        # 4. Burn Rate / Queima de Caixa Mensal (Se fluxo for negativo)
         burn_rate_val = abs(fluxo_caixa_mes) if fluxo_caixa_mes < 0 else 0.0
     else:
         df_mes_atual = pd.DataFrame()
@@ -150,7 +143,7 @@ if aba == "Dashboard":
     with col4:
         st.metric("💵 FLUXO DE CAIXA", f"R$ {fluxo_caixa_mes:,.2f}", delta="Entradas - Despesas", delta_color="normal")
 
-    # Segunda linha com os 4 NOVOS PARÂMETROS solicitados
+    # Segunda linha com os parâmetros adicionais
     st.markdown("### 📌 Indicadores Executivos Adicionais")
     col_n1, col_n2, col_n3, col_n4 = st.columns(4)
     with col_n1:
@@ -161,6 +154,59 @@ if aba == "Dashboard":
         st.metric("🛡️ CASH RATIO", f"{cash_ratio_val:.2f}x", delta="Liquidez Imediata", delta_color="normal")
     with col_n4:
         st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
+
+    st.markdown("---")
+
+    # ==================== NOVA MATRIZ CONSOLIDADA E GRÁFICOS COMPARATIVOS ====================
+    st.markdown("### 📅 Matriz Consolidada Mensal & Comparativos Executivos")
+    if not df.empty:
+        pivot_resumo = df.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
+        if "Receita" not in pivot_resumo.columns:
+            pivot_resumo["Receita"] = 0.0
+        if "Despesa" not in pivot_resumo.columns:
+            pivot_resumo["Despesa"] = 0.0
+        
+        pivot_resumo = pivot_resumo.sort_values("AnoMes")
+        pivot_resumo["Cash Flow"] = pivot_resumo["Receita"] - pivot_resumo["Despesa"]
+        pivot_resumo["Acumulado"] = pivot_resumo["Cash Flow"].cumsum()
+        
+        # Renomeando colunas para o padrão solicitado
+        pivot_resumo_exibicao = pivot_resumo.rename(columns={"Receita": "Income", "Despesa": "Expense"}).copy()
+        
+        pivot_fmt = pivot_resumo_exibicao.copy()
+        for col in ["Income", "Expense", "Cash Flow", "Acumulado"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+            
+        st.dataframe(aplicar_estilo_tabela(pivot_fmt.set_index("AnoMes").style, subset=["Cash Flow", "Acumulado"]), use_container_width=True)
+        
+        st.markdown("---")
+        
+        # Gráficos Lado a Lado
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("#### 📊 Income vs Expense (Receitas x Despesas)")
+            df_melt_ie = pivot_resumo_exibicao.melt(id_vars="AnoMes", value_vars=["Income", "Expense"], var_name="Métrica", value_name="Valor")
+            chart_ie = alt.Chart(df_melt_ie).mark_bar(opacity=0.85, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X('AnoMes:N', title='Mês'),
+                y=alt.Y('Valor:Q', title='Montante (R$)'),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Income', 'Expense'], range=['#2a9d8f', '#e76f51']), title='Categoria'),
+                tooltip=['AnoMes', 'Métrica', 'Valor']
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ie, use_container_width=True)
+            
+        with col_g2:
+            st.markdown("#### 📈 Cash Flow vs Acumulado")
+            df_melt_ca = pivot_resumo_exibicao.melt(id_vars="AnoMes", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
+            chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('AnoMes:N', title='Mês'),
+                y=alt.Y('Valor:Q', title='Montante (R$)'),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Cash Flow', 'Acumulado'], range=['#f4a261', '#264653']), title='Métrica'),
+                tooltip=['AnoMes', 'Métrica', 'Valor']
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ca, use_container_width=True)
+    else:
+        st.info("Nenhum lançamento registrado para gerar a matriz consolidada.")
 
     st.markdown("---")
 
