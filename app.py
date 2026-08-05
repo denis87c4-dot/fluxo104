@@ -45,8 +45,8 @@ def colorir_negativos(val):
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
 
-# Menu lateral
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+# Menu lateral com a nova aba "Monthly Audit"
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Dashboard Financeiro")
@@ -189,6 +189,75 @@ if aba == "Dashboard":
         st.dataframe(df_recentes.style.map(colorir_negativos), use_container_width=True)
     else:
         st.info("Nenhuma transação recente.")
+
+elif aba == "Monthly Audit":
+    st.subheader("🔍 Monthly Audit (Auditoria do Mês Atual)")
+    st.markdown("Acompanhamento estrito do mês atual por categoria: **Budget** vs **Entry (Efetivado/Realizado)** e a **Diferença**.")
+    
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        
+        ano_atual = datetime.today().year
+        mes_atual = datetime.today().month
+        
+        # Filtro estrito para o mês atual e tipo Despesa
+        df_mes = df[(df["Data"].dt.year == ano_atual) & (df["Data"].dt.month == mes_atual) & (df["Tipo"] == "Despesa")]
+        
+        if not df_mes.empty:
+            # Separar Budget do Mês
+            df_budget_mes = df_mes[df_mes["Status"] == "Budget"].groupby("Categoria")["Valor"].sum()
+            # Separar Entry (Efetivado) do Mês
+            df_entry_mes = df_mes[df_mes["Status"] == "Efetivado"].groupby("Categoria")["Valor"].sum()
+            
+            # Unir categorias existentes no mês
+            todas_categorias = sorted(list(set(df_budget_mes.index.tolist() + df_entry_mes.index.tolist())))
+            
+            dados_audit = []
+            for cat in todas_categorias:
+                b_val = df_budget_mes.get(cat, 0.0)
+                e_val = df_entry_mes.get(cat, 0.0)
+                dif_val = b_val - e_val  # Budget - Entry
+                
+                if dif_val < 0:
+                    status_pagamento = f"⚠️ Estourado/Pendente (R$ {abs(dif_val):,.2f} acima)"
+                else:
+                    status_pagamento = f"✅ Dentro do Budget (Restam R$ {dif_val:,.2f})"
+                
+                dados_audit.append({
+                    "Categoria": cat,
+                    "1. Budget (Mês)": b_val,
+                    "2. Entry (Efetivado)": e_val,
+                    "3. Diferença (Budget - Entry)": dif_val,
+                    "Status / Alerta": status_pagamento
+                })
+                
+            df_audit_table = pd.DataFrame(dados_audit).set_index("Categoria")
+            
+            # Formatar colunas monetárias para exibição correta com cores
+            df_audit_fmt = df_audit_table.copy()
+            df_audit_fmt["1. Budget (Mês)"] = df_audit_fmt["1. Budget (Mês)"].apply(lambda x: f"R$ {x:,.2f}")
+            df_audit_fmt["2. Entry (Efetivado)"] = df_audit_fmt["2. Entry (Efetivado)"].apply(lambda x: f"R$ {x:,.2f}")
+            df_audit_fmt["3. Diferença (Budget - Entry)"] = df_audit_fmt["3. Diferença (Budget - Entry)"].apply(lambda x: f"R$ {x:,.2f}")
+            
+            st.dataframe(df_audit_fmt.style.map(colorir_negativos, subset=["3. Diferença (Budget - Entry)"]), use_container_width=True)
+            
+            # Alertas adicionais de despesas vencidas ou pendentes no mês atual
+            hoje_dt = pd.to_datetime(datetime.today().date())
+            vencidas_mes = df_mes[(df_mes["Status"] == "Budget") & (df_mes["Data"] < hoje_dt)]
+            if not vencidas_mes.empty:
+                st.markdown("### ⚠️ Alerta de Contas Vencidas (Budget Pendente no Mês)")
+                st.markdown("As seguintes despesas planejadas no mês atual já passaram da data de hoje e continuam como 'Budget' (não efetivadas):")
+                df_venc_fmt = vencidas_mes[["Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
+                df_venc_fmt["Valor"] = df_venc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+                st.dataframe(df_venc_fmt, use_container_width=True)
+            else:
+                st.success("🎉 Nenhuma despesa pendente/vencida neste mês atual!")
+        else:
+            st.info("Nenhuma despesa registrada para este mês atual.")
+    else:
+        st.info("Nenhum lançamento cadastrado no sistema.")
 
 elif aba == "Financial Indicators":
     st.subheader("📈 Financial Indicators (Budget)")
@@ -436,17 +505,14 @@ elif aba == "Statistical Indicators":
             df_advanced = pd.DataFrame(dados_avancados).set_index("Mês")
             st.dataframe(df_advanced.style.map(colorir_negativos), use_container_width=True)
 
-            # ==================== NOVA TABELA: 4 PARÂMETROS ESTATÍSTICOS AVANÇADOS ====================
+            # TABELA: 4 PARÂMETROS ESTATÍSTICOS AVANÇADOS
             st.markdown("---")
             st.markdown("### 🔬 Deep Statistical Metrics (Gini, Autocorrelação, VaR 99% & Normalidade)")
             st.markdown("Parâmetros avançados de concentração, dependência temporal, risco extremo e aderência à distribuição normal.")
 
             dados_deep_stats = []
-            
-            # Cálculo prévio global para a série histórica de despesas
             series_exp_historico = pivot_mensal["Expense"]
             
-            # 1. Autocorrelação de Lag-1 global da série
             if len(series_exp_historico) >= 3:
                 autocorr_val = series_exp_historico.autocorr(lag=1)
                 if pd.isna(autocorr_val):
@@ -454,17 +520,13 @@ elif aba == "Statistical Indicators":
             else:
                 autocorr_val = 0.0
 
-            # 3. VaR Paramétrico 99% global
             if len(series_exp_historico) > 1 and desvio_padrao > 0:
-                var_99 = media_geral + (2.326 * desvio_padrao) # Z = 2.326 para 99%
+                var_99 = media_geral + (2.326 * desvio_padrao)
             else:
                 var_99 = media_geral
 
-            # 4. Teste de Normalidade simplificado (Jarque-Bera aproximado ou base em Skew/Kurtosis)
-            # JB = n/6 * (Skew^2 + (Kurt^2)/4)
             if n_val >= 4:
                 jb_stat = (n_val / 6.0) * ((skew_val ** 2) + ((kurt_val ** 2) / 4.0))
-                # Valor crítico qui-quadrado (2 graus de liberdade) a 5% é ~5.99
                 normal_passed = jb_stat < 5.99
             else:
                 jb_stat = 0.0
@@ -472,8 +534,6 @@ elif aba == "Statistical Indicators":
 
             for idx, row in pivot_mensal.iterrows():
                 m = row["AnoMes"]
-                
-                # 1. Coeficiente de Gini dos gastos do mês específico por categoria
                 df_mes_cat = df_b[(df_b["AnoMes"] == m) & (df_b["Tipo"] == "Despesa")]
                 if not df_mes_cat.empty:
                     gastos_cat = sorted(df_mes_cat.groupby("Categoria")["Valor"].sum().values)
@@ -487,30 +547,26 @@ elif aba == "Statistical Indicators":
                 else:
                     gini_val = 0.0
 
-                # Interpretação Gini
                 if gini_val > 0.6:
-                    gini_interp = f"Gini {gini_val:.2f} (⚠️ Alta Concentração em poucas categorias)"
+                    gini_interp = f"Gini {gini_val:.2f} (⚠️ Alta Concentração)"
                 elif gini_val > 0.3:
                     gini_interp = f"Gini {gini_val:.2f} (Concentração Moderada)"
                 else:
-                    gini_interp = f"Gini {gini_val:.2f} (✅ Despesas bem diversificadas)"
+                    gini_interp = f"Gini {gini_val:.2f} (✅ Bem Diversificado)"
 
-                # Interpretação Autocorrelação
                 if autocorr_val > 0.5:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alta Inércia/Previsível)"
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alta Inércia)"
                 elif autocorr_val < -0.3:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Comportamento Alternado)"
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Alternado)"
                 else:
-                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Independente/Estocástico)"
+                    autocorr_interp = f"Lag-1: {autocorr_val:.2f} (Estocástico)"
 
-                # Interpretação VaR 99%
-                var_interp = f"R$ {var_99:,.2f} (Pior caso esperado a 99%)"
+                var_interp = f"R$ {var_99:,.2f} (Pior caso 99%)"
 
-                # Interpretação Normalidade
                 if normal_passed:
-                    norm_interp = f"JB: {jb_stat:.2f} (✅ Passou no teste de Normalidade)"
+                    norm_interp = f"JB: {jb_stat:.2f} (✅ Normalidade OK)"
                 else:
-                    norm_interp = f"JB: {jb_stat:.2f} (⚠️ Rejeita Normalidade / Caudas Pesadas)"
+                    norm_interp = f"JB: {jb_stat:.2f} (⚠️ Caudas Pesadas)"
 
                 dados_deep_stats.append({
                     "Mês": m,
@@ -522,7 +578,6 @@ elif aba == "Statistical Indicators":
 
             df_deep_table = pd.DataFrame(dados_deep_stats).set_index("Mês")
             st.dataframe(df_deep_table, use_container_width=True)
-            # ===================================================================================
 
             st.markdown("---")
             st.markdown("### 🔔 Curva de Probabilidade (Gráfico de Sino)")
