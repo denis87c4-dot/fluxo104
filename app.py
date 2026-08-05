@@ -95,9 +95,8 @@ if aba == "Dashboard":
         else:
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
             
-        total_receitas_geral = df[df["Tipo"] == "Receita"]["Valor"].sum()
-        total_despesas_geral = df[df["Tipo"] == "Despesa"]["Valor"].sum()
-        patrimonio_liquido_global = total_receitas_geral - total_despesas_geral
+        # Cálculo do Fluxo de Caixa do Mês (Total Entradas menos Despesas - considerando efetivados ou geral)
+        fluxo_caixa_mes = receitas_mes - despesas_mes
     else:
         df_mes_atual = pd.DataFrame()
         receitas_mes = 0.0
@@ -108,7 +107,7 @@ if aba == "Dashboard":
         texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
         delta_rec = 0.0
         delta_desp = 0.0
-        patrimonio_liquido_global = 0.0
+        fluxo_caixa_mes = 0.0
         df_vencidas = pd.DataFrame()
         mes_selecionado = datetime.today().strftime("%Y-%m")
 
@@ -122,7 +121,7 @@ if aba == "Dashboard":
     with col3:
         st.markdown(f"**⚠️ DESPESAS VENCIDAS**<br>{texto_vencidas_detalhe}", unsafe_allow_html=True)
     with col4:
-        st.metric("🏛️ PATRIMÔNIO LÍQUIDO", f"R$ {patrimonio_liquido_global:,.2f}", delta="Acumulado Geral")
+        st.metric("💵 FLUXO DE CAIXA", f"R$ {fluxo_caixa_mes:,.2f}", delta="Entradas - Despesas", delta_color="normal")
 
     st.markdown("---")
 
