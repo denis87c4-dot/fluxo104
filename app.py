@@ -130,8 +130,8 @@ if aba == "Dashboard":
         st.info("Nenhuma transação recente.")
 
 elif aba == "Projections & Charts":
-    st.subheader("📈 Projections & Charts (12 Gráficos Avançados com Destaque Visual)")
-    st.markdown("Central completa contendo a **Célula Suspensa** e 12 gráficos preditivos com cores estratégicas para tomada de decisão.")
+    st.subheader("📈 Projections & Charts (16 Gráficos e Parâmetros Avançados de Elite)")
+    st.markdown("Central completa contendo a **Célula Suspensa** e 16 módulos analíticos de projeção, risco e inteligência financeira.")
     
     df = st.session_state.lancamentos
     if not df.empty:
@@ -274,8 +274,8 @@ elif aba == "Projections & Charts":
             y=alt.Y('Variacao_Despesa:Q', title='Variação Mensal de Gastos (R$)'),
             color=alt.condition(
                 alt.datum.Variacao_Despesa > 0,
-                alt.value('#e76f51'), # Vermelho/Laranja alerta se aumentou o gasto
-                alt.value('#2a9d8f')  # Verde esmeralda se reduziu o gasto
+                alt.value('#e76f51'),
+                alt.value('#2a9d8f')
             ),
             tooltip=['AnoMes', 'Variacao_Despesa', 'Despesa']
         ).properties(height=350).interactive()
@@ -332,7 +332,7 @@ elif aba == "Projections & Charts":
         
         dados_indep = []
         patr_indep = saldo_atual_caixa
-        for m in range(1, 37): # 3 anos de projeção de independência
+        for m in range(1, 37):
             fut_dt = datetime.today() + relativedelta(months=m)
             patr_indep = (patr_indep * (1 + taxa_mensal)) + poupanca_media_mensal
             dados_indep.append({"Mes": fut_dt.strftime("%Y-%m"), "Patrimonio": patr_indep, "Meta": meta_patrimonio_indep})
@@ -365,6 +365,96 @@ elif aba == "Projections & Charts":
             st.altair_chart(chart_heat, use_container_width=True)
         else:
             st.info("Dados insuficientes para gerar o mapa de calor.")
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 9: Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)
+        # =========================================================================
+        st.markdown("### 9️⃣ Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)")
+        st.markdown("Simula 100 trajetórias estocásticas de caixa baseadas no desvio padrão histórico para avaliar o risco de saldo negativo.")
+        if len(pivot_graf) >= 2:
+            media_cf = pivot_graf["CashFlow"].mean()
+            std_cf = pivot_graf["CashFlow"].std() if len(pivot_graf) > 1 else 100.0
+            
+            simulacoes_mc = []
+            np.random.seed(42)
+            for sim in range(100):
+                saldo_sim = saldo_atual_caixa
+                for m in range(1, 13):
+                    fluxo_aleatorio = np.random.normal(media_cf, std_cf)
+                    saldo_sim += fluxo_aleatorio
+                    simulacoes_mc.append({"Simulacao": sim, "Mes": f"Mês +{m}", "Saldo": saldo_sim})
+            
+            df_mc = pd.DataFrame(simulacoes_mc)
+            chart_mc = alt.Chart(df_mc).mark_line(opacity=0.2, color='#264653').encode(
+                x=alt.X('Mes:N', title='Horizonte Futuro'),
+                y=alt.Y('Saldo:Q', title='Simulações de Saldo (R$)'),
+                detail='Simulacao:N'
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_mc, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para rodar a Simulação de Monte Carlo.")
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 10: Índice de Resiliência de Fluxo de Caixa (Resilience Index)
+        # =========================================================================
+        st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
+        if len(pivot_graf) > 0:
+            df_res = pivot_graf.copy()
+            # Índice calculado como proporção entre superávit e despesa, normalizado de 0 a 100
+            df_res["Resiliencia"] = np.clip(((df_res["CashFlow"] / (df_res["Despesa"] + 1)) * 50) + 50, 0, 100)
+            
+            chart_res = alt.Chart(df_res).mark_bar().encode(
+                x=alt.X('AnoMes:N', title='Mês'),
+                y=alt.Y('Resiliencia:Q', title='Índice de Resiliência (0 a 100)', scale=alt.Scale(domain=[0, 100])),
+                color=alt.condition(
+                    alt.datum.Resiliencia >= 50,
+                    alt.value('#2a9d8f'), # Saudável
+                    alt.value('#e76f51')  # Frágil
+                ),
+                tooltip=['AnoMes', 'Resiliencia', 'CashFlow']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_res, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para calcular a resiliência.")
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 11: Dispersão de Despesas e Elasticidade (Scatter Matrix)
+        # =========================================================================
+        st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
+        df_scatter = df[df["Tipo"] == "Despesa"].copy()
+        if not df_scatter.empty:
+            df_scatter["DiaMes"] = df_scatter["Data"].dt.day
+            chart_scat = alt.Chart(df_scatter).mark_circle(size=80).encode(
+                x=alt.X('DiaMes:Q', title='Dia do Mês'),
+                y=alt.Y('Valor:Q', title='Valor da Despesa (R$)'),
+                color=alt.Color('Categoria:N', scale=alt.Scale(scheme='tableau10')),
+                tooltip=['Descricao', 'Valor', 'Categoria', 'Data']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_scat, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa para exibir no gráfico de dispersão.")
+
+        st.markdown("---")
+
+        # =========================================================================
+        # GRÁFICO 12: Índice de Autonomia de Renda Passiva (Freedom Gauge)
+        # =========================================================================
+        st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
+        taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
+        taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
+        
+        media_despesas_anual = pivot_graf["Despesa"].mean() if not pivot_graf.empty else 1.0
+        renda_passiva_estimada = saldo_atual_caixa * taxa_mes_passivo
+        autonomia_pct = min((renda_passiva_estimada / (media_despesas_anual if media_despesas_anual > 0 else 1.0)) * 100, 100.0)
+        
+        st.metric("Grau de Independência Atual", f"{autonomia_pct:.2f}% dos gastos cobertos", delta=f"R$ {renda_passiva_estimada:,.2f} / mês de renda passiva teórica")
+        st.progress(int(autonomia_pct))
         
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
