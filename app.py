@@ -877,7 +877,6 @@ elif aba == "Lançamentos":
     
     df = st.session_state.lancamentos
     if not df.empty:
-        # ==================== SMART SEARCH INTERFACE ====================
         col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
         with col_s1:
             termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
@@ -888,13 +887,11 @@ elif aba == "Lançamentos":
             
         df_filtrado = df.copy()
         
-        # Aplicando filtros de Tipo e Status
         if filtro_tipo != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
         if filtro_status != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
             
-        # Aplicando Smart Search global em texto (case insensitive em Descrição, Categoria e Conta)
         if termo_busca.strip() != "":
             termo = termo_busca.strip().lower()
             mask = (
