@@ -104,6 +104,21 @@ if aba == "Dashboard":
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
             
         fluxo_caixa_mes = receitas_mes - despesas_mes
+
+        # ==================== CÁLCULO DOS 4 NOVOS PARÂMETROS ====================
+        # 1. Taxa de Poupança (Net Savings Rate): ((Receitas - Despesas) / Receitas) * 100
+        net_savings_rate = ((receitas_mes - despesas_mes) / receitas_mes * 100) if receitas_mes > 0 else 0.0
+
+        # 2. Comprometimento de Renda (Budget vs Despesas Efetivadas)
+        comprometimento_renda = (despesas_mes / receitas_mes * 100) if receitas_mes > 0 else 0.0
+
+        # 3. Índice de Liquidez / Cash Ratio (Contas líquidas / Despesas do mês)
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        contas_liquidas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (~df_mes_atual["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        cash_ratio_val = (contas_liquidas_mes / despesas_mes) if despesas_mes > 0 else 0.0
+
+        # 4. Burn Rate / Queima de Caixa Mensal (Se fluxo for negativo)
+        burn_rate_val = abs(fluxo_caixa_mes) if fluxo_caixa_mes < 0 else 0.0
     else:
         df_mes_atual = pd.DataFrame()
         receitas_mes = 0.0
@@ -117,9 +132,14 @@ if aba == "Dashboard":
         fluxo_caixa_mes = 0.0
         df_vencidas = pd.DataFrame()
         mes_selecionado = datetime.today().strftime("%Y-%m")
+        net_savings_rate = 0.0
+        comprometimento_renda = 0.0
+        cash_ratio_val = 0.0
+        burn_rate_val = 0.0
 
     st.markdown("---")
 
+    # Primeira linha de métricas principais
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
@@ -129,6 +149,18 @@ if aba == "Dashboard":
         st.markdown(f"**⚠️ DESPESAS VENCIDAS**<br>{texto_vencidas_detalhe}", unsafe_allow_html=True)
     with col4:
         st.metric("💵 FLUXO DE CAIXA", f"R$ {fluxo_caixa_mes:,.2f}", delta="Entradas - Despesas", delta_color="normal")
+
+    # Segunda linha com os 4 NOVOS PARÂMETROS solicitados
+    st.markdown("### 📌 Indicadores Executivos Adicionais")
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    with col_n1:
+        st.metric("💰 TAXA DE POUPANÇA", f"{net_savings_rate:.1f}%", delta="Net Savings Rate", delta_color="normal")
+    with col_n2:
+        st.metric("📊 COMPROP. DE RENDA", f"{comprometimento_renda:.1f}%", delta="Gastos / Receitas", delta_color="inverse")
+    with col_n3:
+        st.metric("🛡️ CASH RATIO", f"{cash_ratio_val:.2f}x", delta="Liquidez Imediata", delta_color="normal")
+    with col_n4:
+        st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
 
     st.markdown("---")
 
@@ -496,8 +528,6 @@ elif aba == "Projections & Charts":
         autonomia_pct = min((renda_passiva_estimada / (media_despesas_anual if media_despesas_anual > 0 else 1.0)) * 100, 100.0)
         
         st.metric("Grau de Independência Atual", f"{autonomia_pct:.2f}% dos gastos cobertos", delta=f"R$ {renda_passiva_estimada:,.2f} / mês de renda passiva teórica")
-        
-        # Correção aplicada aqui (protegendo contra negativos ou valores acima de 100)
         st.progress(int(max(0, min(100, autonomia_pct))))
         
     else:
