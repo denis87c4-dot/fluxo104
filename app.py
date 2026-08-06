@@ -960,8 +960,8 @@ elif aba == "Cadastro (Form)":
             st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
-    st.subheader("Lista de Lançamentos & Smart Search")
-    st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente por termo, categoria, conta ou status.")
+    st.subheader("Lista de Lançamentos & Smart Search (Gerenciamento)")
+    st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente e gerenciar cada registro (Editar ou Deletar).")
     
     df = st.session_state.lancamentos
     if not df.empty:
@@ -992,9 +992,68 @@ elif aba == "Lançamentos":
         st.markdown(f"Exibindo **{len(df_filtrado)}** de **{len(df)}** registros encontrados.")
         
         if not df_filtrado.empty:
-            df_lanc_fmt = df_filtrado.copy()
-            df_lanc_fmt["Valor"] = df_lanc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(aplicar_estilo_tabela(df_lanc_fmt.style), use_container_width=True)
+            # Exibição iterativa linha por linha para permitir botões funcionais de Editar/Deletar
+            for idx, row in df_filtrado.iterrows():
+                with st.expander(f"[{row['Tipo']}] {row['Data']} - {row['Descricao']} | R$ {row['Valor']:,.2f} ({row['Status']})"):
+                    col_det1, col_det2 = st.columns(2)
+                    with col_det1:
+                        st.write(f"**Categoria:** {row['Categoria']}")
+                        st.write(f"**Conta/Cartão:** {row['Conta']}")
+                    with col_det2:
+                        st.write(f"**Parcela:** {row['Parcela']}")
+                        st.write(f"**Status:** {row['Status']}")
+                    
+                    # Botões de Ação por Registro
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
+                            st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
+                            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                            st.success("Lançamento deletado com sucesso!")
+                            st.rerun()
+                    with col_det2:
+                        edit_key = f"editar_toggle_{idx}"
+                        if st.button("✏️ Editar Lançamento", key=f"edit_btn_{idx}"):
+                            st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                    
+                    if st.session_state.get(f"editar_toggle_{idx}", False):
+                        with st.form(key=f"form_edit_{idx}"):
+                            st.markdown(f"### Editando Registro #{idx}")
+                            novo_tipo = st.selectbox("Tipo", ["Despesa", "Receita"], index=0 if row["Tipo"] == "Despesa" else 1, key=f"et_{idx}")
+                            novo_status = st.selectbox("Status", ["Budget", "Efetivado"], index=0 if row["Status"] == "Budget" else 1, key=f"es_{idx}")
+                            nova_desc = st.text_input("Descrição", value=row["Descricao"], key=f"ed_{idx}")
+                            
+                            idx_cat = st.session_state.categorias.index(row["Categoria"]) if row["Categoria"] in st.session_state.categorias else 0
+                            nova_cat = st.selectbox("Categoria", st.session_state.categorias, index=idx_cat, key=f"ec_{idx}")
+                            
+                            contas_possiveis = ["Cash husband", "Nubank"]
+                            if not st.session_state.cartoes.empty:
+                                contas_possiveis.extend(st.session_state.cartoes["Nome"].tolist())
+                            idx_conta = contas_possiveis.index(row["Conta"]) if row["Conta"] in contas_possiveis else 0
+                            nova_conta = st.selectbox("Conta", contas_possiveis, index=idx_conta, key=f"econta_{idx}")
+                            
+                            novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), format="%.2f", key=f"ev_{idx}")
+                            
+                            try:
+                                data_parsed = datetime.strptime(str(row["Data"]).split()[0], "%Y-%m-%d").date()
+                            except:
+                                data_parsed = datetime.today().date()
+                            nova_data = st.date_input("Data", value=data_parsed, key=f"edata_{idx}")
+                            
+                            salvar_edicao = st.form_submit_button("💾 Salvar Alterações", type="primary")
+                            if salvar_edicao:
+                                st.session_state.lancamentos.loc[idx, "Tipo"] = novo_tipo
+                                st.session_state.lancamentos.loc[idx, "Status"] = novo_status
+                                st.session_state.lancamentos.loc[idx, "Descricao"] = nova_desc
+                                st.session_state.lancamentos.loc[idx, "Categoria"] = nova_cat
+                                st.session_state.lancamentos.loc[idx, "Conta"] = nova_conta
+                                st.session_state.lancamentos.loc[idx, "Valor"] = float(novo_valor)
+                                st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
+                                
+                                st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                                st.session_state[edit_key] = False
+                                st.success("Lançamento atualizado com sucesso!")
+                                st.rerun()
         else:
             st.warning("Nenhum lançamento corresponde ao filtro ou Smart Search informado.")
             
