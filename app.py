@@ -978,7 +978,6 @@ elif aba == "Cadastro (Form)":
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
             
-            # Se for compra normal feita no cartão, consome o limite
             if tipo != "Transferência" and cartao_selecionado_row is not None:
                 nome_c_alvo = cartao_selecionado_row["Nome"]
                 idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == nome_c_alvo].index
@@ -988,7 +987,6 @@ elif aba == "Cadastro (Form)":
                     st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
                     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
-            # Se for transferência para um cartão (ex: pagamento de fatura), restaura o limite do cartão destino
             if tipo == "Transferência" and not st.session_state.cartoes.empty and conta_destino_final in st.session_state.cartoes["Nome"].values:
                 idx_cartao_dest = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_destino_final].index
                 if not idx_cartao_dest.empty:
@@ -1119,7 +1117,6 @@ elif aba == "Lançamentos":
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
     
-    # Formulário de Cadastro
     with st.form("form_cartao"):
         nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Visa Itaú...")
         dia_fechamento = st.number_input("Dia de Fechamento da Fatura", min_value=1, max_value=31, value=10)
@@ -1140,14 +1137,12 @@ elif aba == "Cartões":
                 st.success("Cartão salvo com sucesso!")
                 st.rerun()
 
-    # Listagem e Exclusão Segura
     st.markdown("### 📋 Cartões Cadastrados e Gerenciamento")
     if not st.session_state.cartoes.empty:
         for idx, row in st.session_state.cartoes.iterrows():
             col1, col2 = st.columns([3, 1])
             col1.write(f"**{row['Nome']}** | Fechamento: dia {row['Fechamento']} | Vencimento: dia {row['Vencimento']} | Limite: R$ {row['Limite']:,.2f}")
             
-            # Verifica se existe algum lançamento associado a esta conta/cartão
             tem_lancamento = False
             if not st.session_state.lancamentos.empty and "Conta" in st.session_state.lancamentos.columns:
                 tem_lancamento = (st.session_state.lancamentos['Conta'] == row['Nome']).any()
