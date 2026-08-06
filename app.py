@@ -1118,6 +1118,8 @@ elif aba == "Lançamentos":
 
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
+    
+    # Formulário de Cadastro
     with st.form("form_cartao"):
         nome_cartao = st.text_input("Nome do Cartão / Banco", placeholder="Ex: Visa Itaú...")
         dia_fechamento = st.number_input("Dia de Fechamento da Fatura", min_value=1, max_value=31, value=10)
@@ -1136,12 +1138,30 @@ elif aba == "Cartões":
                 st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_cartao], ignore_index=True)
                 st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
                 st.success("Cartão salvo com sucesso!")
+                st.rerun()
 
+    # Listagem e Exclusão Segura
+    st.markdown("### 📋 Cartões Cadastrados e Gerenciamento")
     if not st.session_state.cartoes.empty:
-        df_cartoes_fmt = st.session_state.cartoes.copy()
-        if "Limite" in df_cartoes_fmt.columns:
-            df_cartoes_fmt["Limite"] = df_cartoes_fmt["Limite"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(aplicar_estilo_tabela(df_cartoes_fmt.style), use_container_width=True)
+        for idx, row in st.session_state.cartoes.iterrows():
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"**{row['Nome']}** | Fechamento: dia {row['Fechamento']} | Vencimento: dia {row['Vencimento']} | Limite: R$ {row['Limite']:,.2f}")
+            
+            # Verifica se existe algum lançamento associado a esta conta/cartão
+            tem_lancamento = False
+            if not st.session_state.lancamentos.empty and "Conta" in st.session_state.lancamentos.columns:
+                tem_lancamento = (st.session_state.lancamentos['Conta'] == row['Nome']).any()
+            
+            if col2.button("🗑️ Excluir", key=f"del_cartao_{idx}"):
+                if tem_lancamento:
+                    st.error(f"Não é possível excluir '{row['Nome']}': existem lançamentos vinculados a esta conta.")
+                else:
+                    st.session_state.cartoes = st.session_state.cartoes.drop(idx).reset_index(drop=True)
+                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+                    st.success(f"Cartão '{row['Nome']}' removido com sucesso!")
+                    st.rerun()
+    else:
+        st.info("Nenhum cartão ou conta cadastrado.")
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
