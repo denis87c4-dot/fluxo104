@@ -992,7 +992,6 @@ elif aba == "Lançamentos":
         st.markdown(f"Exibindo **{len(df_filtrado)}** de **{len(df)}** registros encontrados.")
         
         if not df_filtrado.empty:
-            # Exibição iterativa linha por linha para permitir botões funcionais de Editar/Deletar
             for idx, row in df_filtrado.iterrows():
                 with st.expander(f"[{row['Tipo']}] {row['Data']} - {row['Descricao']} | R$ {row['Valor']:,.2f} ({row['Status']})"):
                     col_det1, col_det2 = st.columns(2)
@@ -1003,12 +1002,12 @@ elif aba == "Lançamentos":
                         st.write(f"**Parcela:** {row['Parcela']}")
                         st.write(f"**Status:** {row['Status']}")
                     
-                    # Botões de Ação por Registro
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
                         if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
                             st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
                             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                            st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)  # CORREÇÃO APLICADA
                             st.success("Lançamento deletado com sucesso!")
                             st.rerun()
                     with col_det2:
@@ -1051,6 +1050,8 @@ elif aba == "Lançamentos":
                                 st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
                                 
                                 st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                                st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)  # CORREÇÃO APLICADA
+                                
                                 st.session_state[edit_key] = False
                                 st.success("Lançamento atualizado com sucesso!")
                                 st.rerun()
