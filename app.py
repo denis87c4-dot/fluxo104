@@ -296,7 +296,7 @@ if aba == "Dashboard":
         st.info("Nenhuma transação recente.")
 
 elif aba == "Projections & Charts":
-    st.subheader("📈 Projections & Charts (16 Gráficos e Parâmetros Avançados de Elite)")
+    st.subheader("📈 Projections & Charts (12 Gráficos e Parâmetros Avançados de Elite)")
     st.markdown("Central completa contendo a **Célula Suspensa** e módulos analíticos de projeção, risco e inteligência financeira.")
     
     df = st.session_state.lancamentos
