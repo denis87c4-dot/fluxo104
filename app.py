@@ -17,14 +17,16 @@ ARQUIVO_CATEGORIAS = "categorias.csv"
 
 if os.path.exists(ARQUIVO_LANCAMENTOS):
     st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
+    if "ContaDestino" not in st.session_state.lancamentos.columns:
+        st.session_state.lancamentos["ContaDestino"] = ""
 else:
-    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
+    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
 
 if os.path.exists(ARQUIVO_CATEGORIAS):
     df_cat = pd.read_csv(ARQUIVO_CATEGORIAS)
     st.session_state.categorias = df_cat["Categoria"].tolist()
 else:
-    st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Outros"]
+    st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Transferência", "Outros"]
 
 if os.path.exists(ARQUIVO_CARTOES):
     st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
@@ -857,11 +859,11 @@ elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
     col_a, col_b = st.columns(2)
     with col_a:
-        tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
+        tipo = st.selectbox("Tipo", ["Despesa", "Receita", "Transferência"])
     with col_b:
         status = st.selectbox("Status / Fase", ["Budget", "Efetivado"])
         
-    descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Debts...")
+    descricao = st.text_input("Descrição", placeholder="Ex: Gas, Supermercado, Pagamento de Fatura...")
     
     lista_cat_opcao = st.session_state.categorias + ["+ Incluir Nova Categoria..."]
     cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
@@ -874,22 +876,49 @@ elif aba == "Cadastro (Form)":
     contas_base = ["Cash husband", "Nubank"]
     if not st.session_state.cartoes.empty:
         contas_base.extend(st.session_state.cartoes["Nome"].tolist())
-    lista_conta_opcao = contas_base + ["+ Incluir Novo Cartão/Conta..."]
-    conta_escolhida = st.selectbox("Account (Conta / Cartão)", lista_conta_opcao)
-    conta_final = conta_escolhida
-    
-    cartao_selecionado_row = None
-    if not st.session_state.cartoes.empty and conta_final in st.session_state.cartoes["Nome"].values:
-        cartao_selecionado_row = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_final].iloc[0]
 
-    if conta_escolhida == "+ Incluir Novo Cartão/Conta...":
-        novo_c_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
-        if novo_c_digitado.strip() != "":
-            conta_final = novo_c_digitado.strip()
-            novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
-            st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
-            st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
-            cartao_selecionado_row = novo_c_df.iloc[0]
+    conta_final = ""
+    conta_destino_final = ""
+    cartao_selecionado_row = None
+
+    if tipo == "Transferência":
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            conta_saida_escolhida = st.selectbox("Conta Saída (Origem)", contas_base + ["+ Incluir Novo Cartão/Conta..."])
+            conta_final = conta_saida_escolhida
+            if conta_saida_escolhida == "+ Incluir Novo Cartão/Conta...":
+                novo_c_digitado = st.text_input("Digite o nome da Conta Saída:")
+                if novo_c_digitado.strip() != "":
+                    conta_final = novo_c_digitado.strip()
+                    novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
+                    st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
+                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        with col_t2:
+            conta_destino_escolhida = st.selectbox("Conta Destino", contas_base + ["+ Incluir Novo Cartão/Conta..."])
+            conta_destino_final = conta_destino_escolhida
+            if conta_destino_escolhida == "+ Incluir Novo Cartão/Conta...":
+                novo_d_digitado = st.text_input("Digite o nome da Conta Destino:")
+                if novo_d_digitado.strip() != "":
+                    conta_destino_final = novo_d_digitado.strip()
+                    novo_d_df = pd.DataFrame([{"Nome": conta_destino_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
+                    st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_d_df], ignore_index=True)
+                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        categoria_final = "Transferência"
+    else:
+        conta_escolhida = st.selectbox("Account (Conta / Cartão)", contas_base + ["+ Incluir Novo Cartão/Conta..."])
+        conta_final = conta_escolhida
+        
+        if not st.session_state.cartoes.empty and conta_final in st.session_state.cartoes["Nome"].values:
+            cartao_selecionado_row = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_final].iloc[0]
+
+        if conta_escolhida == "+ Incluir Novo Cartão/Conta...":
+            novo_c_digitado = st.text_input("Digite o nome do novo Cartão / Conta:")
+            if novo_c_digitado.strip() != "":
+                conta_final = novo_c_digitado.strip()
+                novo_c_df = pd.DataFrame([{"Nome": conta_final, "Fechamento": 10, "Limite": 1000.0, "Vencimento": 17}])
+                st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_c_df], ignore_index=True)
+                st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+                cartao_selecionado_row = novo_c_df.iloc[0]
 
     valor_total = st.number_input("Valor Total (R$)", min_value=0.0, format="%.2f")
     data_compra = st.date_input("Data da Compra", value=datetime.today())
@@ -907,7 +936,7 @@ elif aba == "Cadastro (Form)":
             st.warning("Preencha a descrição.")
         else:
             novos_registros = []
-            dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row else 0
+            dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if (tipo != "Transferência" and cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row) else 0
             
             for i in range(parcelas):
                 if frequencia == "Mensal":
@@ -920,7 +949,7 @@ elif aba == "Cadastro (Form)":
                     data_base_parcela = data_compra
 
                 data_efetiva_lancamento = data_base_parcela
-                if cartao_selecionado_row is not None and dia_fechamento_cartao > 0:
+                if tipo != "Transferência" and cartao_selecionado_row is not None and dia_fechamento_cartao > 0:
                     if i == 0 and data_compra.day > dia_fechamento_cartao:
                         data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
                     elif i > 0 and data_compra.day > dia_fechamento_cartao:
@@ -939,6 +968,7 @@ elif aba == "Cadastro (Form)":
                     "Descricao": desc_formatada,
                     "Categoria": categoria_final,
                     "Conta": conta_final,
+                    "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
                     "Valor": round(valor_parcela, 2),
                     "Data": str(data_efetiva_lancamento),
                     "Parcela": f"{i+1}/{parcelas}"
@@ -948,13 +978,23 @@ elif aba == "Cadastro (Form)":
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
             
-            if cartao_selecionado_row is not None:
+            # Se for compra normal feita no cartão, consome o limite
+            if tipo != "Transferência" and cartao_selecionado_row is not None:
                 nome_c_alvo = cartao_selecionado_row["Nome"]
                 idx_cartao = st.session_state.cartoes[st.session_state.cartoes["Nome"] == nome_c_alvo].index
                 if not idx_cartao.empty:
                     limite_atual = float(st.session_state.cartoes.loc[idx_cartao[0], "Limite"])
                     novo_limite = max(0.0, limite_atual - valor_total)
                     st.session_state.cartoes.loc[idx_cartao[0], "Limite"] = novo_limite
+                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+
+            # Se for transferência para um cartão (ex: pagamento de fatura), restaura o limite do cartão destino
+            if tipo == "Transferência" and not st.session_state.cartoes.empty and conta_destino_final in st.session_state.cartoes["Nome"].values:
+                idx_cartao_dest = st.session_state.cartoes[st.session_state.cartoes["Nome"] == conta_destino_final].index
+                if not idx_cartao_dest.empty:
+                    limite_atual = float(st.session_state.cartoes.loc[idx_cartao_dest[0], "Limite"])
+                    novo_limite = limite_atual + valor_total
+                    st.session_state.cartoes.loc[idx_cartao_dest[0], "Limite"] = novo_limite
                     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
             st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
@@ -969,7 +1009,7 @@ elif aba == "Lançamentos":
         with col_s1:
             termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
         with col_s2:
-            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa"])
+            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa", "Transferência"])
         with col_s3:
             filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado"])
             
@@ -997,7 +1037,9 @@ elif aba == "Lançamentos":
                     col_det1, col_det2 = st.columns(2)
                     with col_det1:
                         st.write(f"**Categoria:** {row['Categoria']}")
-                        st.write(f"**Conta/Cartão:** {row['Conta']}")
+                        st.write(f"**Conta (Saída):** {row['Conta']}")
+                        if row["Tipo"] == "Transferência":
+                            st.write(f"**Conta Destino:** {row.get('ContaDestino', '')}")
                     with col_det2:
                         st.write(f"**Parcela:** {row['Parcela']}")
                         st.write(f"**Status:** {row['Status']}")
@@ -1007,10 +1049,10 @@ elif aba == "Lançamentos":
                         if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
                             st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
                             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
-                            st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)  # CORREÇÃO APLICADA
+                            st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
                             st.success("Lançamento deletado com sucesso!")
                             st.rerun()
-                    with col_det2:
+                    with col_btn2:
                         edit_key = f"editar_toggle_{idx}"
                         if st.button("✏️ Editar Lançamento", key=f"edit_btn_{idx}"):
                             st.session_state[edit_key] = not st.session_state.get(edit_key, False)
@@ -1018,7 +1060,9 @@ elif aba == "Lançamentos":
                     if st.session_state.get(f"editar_toggle_{idx}", False):
                         with st.form(key=f"form_edit_{idx}"):
                             st.markdown(f"### Editando Registro #{idx}")
-                            novo_tipo = st.selectbox("Tipo", ["Despesa", "Receita"], index=0 if row["Tipo"] == "Despesa" else 1, key=f"et_{idx}")
+                            tipos_disp = ["Despesa", "Receita", "Transferência"]
+                            idx_tipo = tipos_disp.index(row["Tipo"]) if row["Tipo"] in tipos_disp else 0
+                            novo_tipo = st.selectbox("Tipo", tipos_disp, index=idx_tipo, key=f"et_{idx}")
                             novo_status = st.selectbox("Status", ["Budget", "Efetivado"], index=0 if row["Status"] == "Budget" else 1, key=f"es_{idx}")
                             nova_desc = st.text_input("Descrição", value=row["Descricao"], key=f"ed_{idx}")
                             
@@ -1029,8 +1073,13 @@ elif aba == "Lançamentos":
                             if not st.session_state.cartoes.empty:
                                 contas_possiveis.extend(st.session_state.cartoes["Nome"].tolist())
                             idx_conta = contas_possiveis.index(row["Conta"]) if row["Conta"] in contas_possiveis else 0
-                            nova_conta = st.selectbox("Conta", contas_possiveis, index=idx_conta, key=f"econta_{idx}")
+                            nova_conta = st.selectbox("Conta (Saída)", contas_possiveis, index=idx_conta, key=f"econta_{idx}")
                             
+                            nova_conta_dest = ""
+                            if novo_tipo == "Transferência":
+                                idx_conta_dest = contas_possiveis.index(row.get("ContaDestino", "")) if row.get("ContaDestino", "") in contas_possiveis else 0
+                                nova_conta_dest = st.selectbox("Conta Destino", contas_possiveis, index=idx_conta_dest, key=f"econta_dest_{idx}")
+
                             novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), format="%.2f", key=f"ev_{idx}")
                             
                             try:
@@ -1046,11 +1095,12 @@ elif aba == "Lançamentos":
                                 st.session_state.lancamentos.loc[idx, "Descricao"] = nova_desc
                                 st.session_state.lancamentos.loc[idx, "Categoria"] = nova_cat
                                 st.session_state.lancamentos.loc[idx, "Conta"] = nova_conta
+                                st.session_state.lancamentos.loc[idx, "ContaDestino"] = nova_conta_dest if novo_tipo == "Transferência" else ""
                                 st.session_state.lancamentos.loc[idx, "Valor"] = float(novo_valor)
                                 st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
                                 
                                 st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
-                                st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)  # CORREÇÃO APLICADA
+                                st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
                                 
                                 st.session_state[edit_key] = False
                                 st.success("Lançamento atualizado com sucesso!")
@@ -1060,7 +1110,7 @@ elif aba == "Lançamentos":
             
         st.markdown("---")
         if st.button("🗑️ Limpar Todos os Lançamentos"):
-            st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "Valor", "Data", "Parcela"])
+            st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
             st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
             st.rerun()
     else:
@@ -1095,7 +1145,7 @@ elif aba == "Cartões":
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
-    nova_cat = st.text_input("Nome da Nova Categoria")
+    nova_cat = st.text_input("Nome da Nova Categorias")
     if st.button("Adicionar Categoria"):
         if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
             st.session_state.categorias.append(nova_cat)
