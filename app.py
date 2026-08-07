@@ -90,7 +90,6 @@ if aba == "Dashboard":
         
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
 
-        # Despesas Efetivadas em Conta Corrente (exclui compras feitas diretamente no cartão)
         despesas_conta_corrente = df_mes_atual[
             (df_mes_atual["Tipo"] == "Despesa") & 
             (df_mes_atual["Status"] == "Efetivado") & 
@@ -117,10 +116,8 @@ if aba == "Dashboard":
         else:
             texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
             
-        # Saldo Líquido Real (apenas caixa e contas correntes)
         saldo_liquido_real = receitas_mes - despesas_conta_corrente
 
-        # Novo Indicador: Passivo Cartões (Faturas em Aberto / Saldo Devedor do Mês)
         despesas_cartao_mes = df_mes_atual[
             (df_mes_atual["Tipo"] == "Despesa") & 
             (df_mes_atual["Conta"].isin(cartoes_nomes))
@@ -183,7 +180,6 @@ if aba == "Dashboard":
         df_hist = df.copy()
         cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         
-        # Separar despesas de C/C e Cartão para o histórico mensal consolidado
         df_hist["Expense_CC"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
         df_hist["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist else 0.0, axis=1)
         df_hist["Income_Val"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
@@ -266,13 +262,11 @@ elif aba == "Resumo Geral":
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         total_entradas = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Receita"]["Valor"].sum()
         
-        # Saídas em C/C (exclui compras diretas em cartão)
         total_saidas_cc = df_mes_efetivado[
             (df_mes_efetivado["Tipo"] == "Despesa") & 
             (~df_mes_efetivado["Conta"].isin(cartoes_nomes))
         ]["Valor"].sum()
 
-        # Passivo de Cartões do mês efetivado
         total_passivo_cartao = df_mes_efetivado[
             (df_mes_efetivado["Tipo"] == "Despesa") & 
             (df_mes_efetivado["Conta"].isin(cartoes_nomes))
@@ -949,7 +943,11 @@ elif aba == "Cadastro (Form)":
             st.warning("Preencha a descrição.")
         else:
             novos_registros = []
-            dia_fechamento_cartao = int(cartao_selecionado_row["Fechamento"]) if (tipo != "Transferência" and cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row) else 0
+            
+            # Identifica se é compra em cartão cadastrado
+            eh_cartao = (tipo == "Despesa" and cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row)
+            dia_fechamento = int(cartao_selecionado_row["Fechamento"]) if eh_cartao else 0
+            dia_vencimento = int(cartao_selecionado_row["Vencimento"]) if (eh_cartao and "Vencimento" in cartao_selecionado_row) else 10
             
             for i in range(parcelas):
                 if frequencia == "Mensal":
@@ -961,12 +959,16 @@ elif aba == "Cadastro (Form)":
                 else:
                     data_base_parcela = data_compra
 
-                data_efetiva_lancamento = data_base_parcela
-                if tipo != "Transferência" and cartao_selecionado_row is not None and dia_fechamento_cartao > 0:
-                    if i == 0 and data_compra.day > dia_fechamento_cartao:
-                        data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
-                    elif i > 0 and data_compra.day > dia_fechamento_cartao:
-                        data_efetiva_lancamento = data_base_parcela + relativedelta(months=1)
+                # Cálculo da data da fatura (Budget) baseada no fechamento e vencimento
+                data_fatura_parcela = data_base_parcela
+                if eh_cartao and dia_fechamento > 0:
+                    if (i == 0 and data_compra.day > dia_fechamento) or (i > 0):
+                        data_fatura_parcela = data_base_parcela + relativedelta(months=1) if i == 0 else data_base_parcela + relativedelta(months=1)
+                    
+                    try:
+                        data_fatura_parcela = data_fatura_parcela.replace(day=min(dia_vencimento, 28))
+                    except:
+                        pass
 
                 if modo_valor == "Dividir Total" and parcelas > 0:
                     valor_parcela = valor_total / parcelas
@@ -975,17 +977,45 @@ elif aba == "Cadastro (Form)":
 
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
-                novos_registros.append({
-                    "Tipo": tipo,
-                    "Status": status,
-                    "Descricao": desc_formatada,
-                    "Categoria": categoria_final,
-                    "Conta": conta_final,
-                    "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
-                    "Valor": round(valor_parcela, 2),
-                    "Data": str(data_efetiva_lancamento),
-                    "Parcela": f"{i+1}/{parcelas}"
-                })
+                if eh_cartao:
+                    # TRANSAÇÃO 1: Efetivada (abate limite / registra o ato da compra no dia real)
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": "Efetivado",
+                        "Descricao": f"[Compra Cartão] {desc_formatada}",
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_compra if i == 0 else data_base_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
+
+                    # TRANSAÇÃO 2: Budget (gerada automaticamente para o mês de vencimento da fatura)
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": "Budget",
+                        "Descricao": f"[Fatura Foco] {desc_formatada}",
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_fatura_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
+                else:
+                    # Lançamentos normais de conta corrente, receitas ou transferências
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": status,
+                        "Descricao": desc_formatada,
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_base_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
 
             df_novo = pd.DataFrame(novos_registros)
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
@@ -1008,7 +1038,7 @@ elif aba == "Cadastro (Form)":
                     st.session_state.cartoes.loc[idx_cartao_dest[0], "Limite"] = novo_limite
                     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
 
-            st.success(f"{parcelas} lançamento(s) gerado(s) com sucesso!")
+            st.success(f"Lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos & Smart Search (Gerenciamento)")
