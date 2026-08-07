@@ -55,7 +55,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
     except Exception:
         return df_styled
 
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -214,86 +214,66 @@ if aba == "Dashboard":
     else:
         st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
-    st.markdown("---")
-
-    if not df.empty and not df_vencidas.empty:
-        with st.expander("⚡ Ações Rápidas: Regularizar Despesa Vencida"):
-            st.write("Selecione uma despesa vencida abaixo para efetivá-la instantaneamente:")
-            opcoes_vencidas = {f"{row['Data'].strftime('%d/%m/%Y')} - {row['Descricao']} (R$ {row['Valor']:,.2f})": idx for idx, row in df_vencidas.iterrows()}
-            escolha_pagar = st.selectbox("Despesa pendente:", list(opcoes_vencidas.keys()))
-            if st.button("✅ Marcar como Efetivado (Pago)", type="primary"):
-                idx_alvo = opcoes_vencidas[escolha_pagar]
-                st.session_state.lancamentos.loc[idx_alvo, "Status"] = "Efetivado"
-                st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
-                st.success("Despesa atualizada para Efetivado com sucesso!")
-                st.rerun()
-
-    if not df.empty and not df_mes_atual.empty:
-        gastos_por_cat = df_mes_atual[df_mes_atual["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum()
-        if not gastos_por_cat.empty:
-            cat_maior_gasto = gastos_por_cat.idxmax()
-            val_maior_gasto = gastos_por_cat.max()
-            st.info(f"💡 **Executive Insight**: No mês de **{mes_selecionado}**, a categoria com maior consumo de recursos foi **{cat_maior_gasto}**, totalizando **R$ {val_maior_gasto:,.2f}**.")
-
-    st.markdown("---")
-
-    st.markdown(f"### 📈 Evolução Diária do Caixa ({mes_selecionado})")
-    if not df_mes_atual.empty:
-        df_diario = df_mes_atual.copy()
-        df_diario["Dia"] = df_diario["Data"].dt.strftime("%d/%m")
-        df_diario["FluxoDiario"] = df_diario.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else -r["Valor"], axis=1)
-        pivot_diario = df_diario.groupby("Dia")["FluxoDiario"].sum().cumsum().reset_index()
-        
-        chart_diario = alt.Chart(pivot_diario).mark_line(strokeWidth=3, color='#2a9d8f', point=True).encode(
-            x=alt.X('Dia:N', title='Dia do Mês'),
-            y=alt.Y('FluxoDiario:Q', title='Saldo Acumulado Diário (R$)'),
-            tooltip=['Dia', 'FluxoDiario']
-        ).properties(height=300).interactive()
-        st.altair_chart(chart_diario, use_container_width=True)
-    else:
-        st.info("Nenhum lançamento registrado para o período selecionado.")
-
-    st.markdown("---")
-
-    st.markdown("### 🎯 Comprometimento da Renda (Budget - Período Selecionado)")
-    renda_base = budget_receitas if budget_receitas > 0 else 1.0
-    comprometimento = min((budget_despesas / renda_base) * 100, 100.0)
+elif aba == "Resumo Geral":
+    st.subheader("📋 Resumo Geral - Efetivados por Mês")
+    st.markdown("Visão consolidada e limpa das Entradas, Saídas e Transferências estritamente **Efetivadas** no mês selecionado.")
     
-    col_b1, col_b2 = st.columns(2)
-    col_b1.write(f"**Renda Planejada (Budget Income):** R$ {budget_receitas:,.2f}")
-    col_b2.write(f"**Total Planejado (Budget Expenses):** R$ {budget_despesas:,.2f}")
+    df = st.session_state.lancamentos
     
-    st.progress(int(max(0, min(100, comprometimento))))
-    st.write(f"Comprometimento do Budget: **{comprometimento:.1f}%**")
-
-    st.markdown("---")
-
-    st.markdown("### 🏛️ Cash Flow por Account (Período Selecionado)")
-    if not df_mes_atual.empty:
-        cash_flow = df_mes_atual.groupby(["Conta", "Tipo"])["Valor"].sum().unstack(fill_value=0.0)
-        if "Receita" not in cash_flow.columns:
-            cash_flow["Receita"] = 0.0
-        if "Despesa" not in cash_flow.columns:
-            cash_flow["Despesa"] = 0.0
-        cash_flow["Saldo Líquido"] = cash_flow["Receita"] - cash_flow["Despesa"]
-        
-        cash_flow_fmt = cash_flow.copy()
-        for col in cash_flow_fmt.columns:
-            cash_flow_fmt[col] = cash_flow_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-            
-        st.dataframe(aplicar_estilo_tabela(cash_flow_fmt.style), use_container_width=True)
-        st.bar_chart(cash_flow["Saldo Líquido"])
-    else:
-        st.info("Nenhuma conta movimentada neste período.")
-
-    st.markdown("---")
-    st.markdown("### 🕒 Últimas Transações Recentes")
     if not df.empty:
-        df_recentes = df.sort_values(by="Data", ascending=False).head(5).copy()
-        df_recentes["Valor"] = df_recentes["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(aplicar_estilo_tabela(df_recentes.style), use_container_width=True)
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
+            
+        # Célula suspensa / Seletor de Mês
+        st.markdown("### 🎛️ Célula Suspensa: Seleção de Período")
+        col_sel1, col_sel2 = st.columns([2, 4])
+        with col_sel1:
+            mes_selecionado_rg = st.selectbox("📅 Selecione o Mês (Ano-Mês)", meses_disponiveis, key="sel_mes_resumo_geral")
+        
+        ano_sel, mes_sel = map(int, mes_selecionado_rg.split("-"))
+        
+        # Filtrar por mês e status == "Efetivado"
+        df_mes_efetivado = df[
+            (df["Data"].dt.year == ano_sel) & 
+            (df["Data"].dt.month == mes_sel) & 
+            (df["Status"] == "Efetivado")
+        ]
+        
+        total_entradas = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Receita"]["Valor"].sum()
+        total_saidas = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Despesa"]["Valor"].sum()
+        total_transferencias = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido_efetivado = total_entradas - total_saidas
+        
+        st.markdown("---")
+        
+        # Métricas em colunas
+        col_rg1, col_rg2, col_rg3, col_rg4 = st.columns(4)
+        with col_rg1:
+            st.metric("🟢 Total de Entradas", f"R$ {total_entradas:,.2f}", delta="Efetivado")
+        with col_rg2:
+            st.metric("🔴 Total de Saídas", f"R$ {total_saidas:,.2f}", delta="Efetivado", delta_color="inverse")
+        with col_rg3:
+            st.metric("🔵 Total de Transferências", f"R$ {total_transferencias:,.2f}", delta="Efetivado")
+        with col_rg4:
+            st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido_efetivado:,.2f}", delta="Entradas - Saídas", delta_color="normal")
+            
+        st.markdown("---")
+        st.markdown(f"### 📄 Detalhamento dos Lançamentos Efetivados ({mes_selecionado_rg})")
+        
+        if not df_mes_efetivado.empty:
+            df_exibicao = df_mes_efetivado[["Tipo", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"]].copy()
+            df_exibicao["Valor"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(aplicar_estilo_tabela(df_exibicao.style), use_container_width=True)
+        else:
+            st.info(f"Nenhum lançamento com status **Efetivado** encontrado para o período de {mes_selecionado_rg}.")
     else:
-        st.info("Nenhuma transação recente.")
+        st.info("Nenhum lançamento cadastrado no sistema.")
 
 elif aba == "Projections & Charts":
     st.subheader("📈 Projections & Charts (12 Gráficos e Parâmetros Avançados de Elite)")
