@@ -26,9 +26,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Função para conectar e atualizar a estrutura do banco SQLite com os novos campos
+# Função para conectar e criar a tabela atualizada no banco SQLite (v3)
 def init_db():
-    conn = sqlite3.connect("fluxo104_v2.db")
+    conn = sqlite3.connect("fluxo104_v3.db")
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transacoes (
@@ -77,7 +77,7 @@ with st.sidebar.form("form_transacao", clear_on_submit=True):
     submitted = st.form_submit_button("Salvar Lançamento")
     
     if submitted and valor > 0:
-        conn = sqlite3.connect("fluxo104_v2.db")
+        conn = sqlite3.connect("fluxo104_v3.db")
         cursor = conn.cursor()
         
         status_efetivado = "Sim" if efetivado else "Não"
@@ -111,8 +111,8 @@ with st.sidebar.form("form_transacao", clear_on_submit=True):
         st.sidebar.success("Lançamento(s) salvo(s) com sucesso!")
         st.rerun()
 
-# Carregar dados do Banco de Dados
-conn = sqlite3.connect("fluxo104_v2.db")
+# Carregar dados do Banco de Dados v3
+conn = sqlite3.connect("fluxo104_v3.db")
 df = pd.read_sql_query("SELECT * FROM transacoes", conn)
 conn.close()
 
