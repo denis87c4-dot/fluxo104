@@ -1,3 +1,43 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import os
+
+# Configuração de arquivos CSV
+ARQUIVO_LANCAMENTOS = "lancamentos.csv"
+ARQUIVO_CARTOES = "cartoes.csv"
+ARQUIVO_CATEGORIAS = "categorias.csv"
+
+# Inicialização do Session State
+if "lancamentos" not in st.session_state:
+    if os.path.exists(ARQUIVO_LANCAMENTOS):
+        st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
+    else:
+        st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
+
+if "cartoes" not in st.session_state:
+    if os.path.exists(ARQUIVO_CARTOES):
+        st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
+    else:
+        st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
+
+if "categorias" not in st.session_state:
+    if os.path.exists(ARQUIVO_CATEGORIAS):
+        df_cat = pd.read_csv(ARQUIVO_CATEGORIAS)
+        st.session_state.categorias = df_cat["Categoria"].tolist()
+    else:
+        st.session_state.categorias = ["Alimentação", "Moradia", "Transporte", "Lazer", "Outros"]
+
+# Menu de Navegação
+st.sidebar.title("Menu Fluxo104")
+aba = st.sidebar.selectbox("Navegação", ["Dashboard", "Cadastro (Form)"])
+
+# Estrutura condicional principal corrigida
+if aba == "Dashboard":
+    st.subheader("📊 Resumo e Métricas")
+    st.write("Painel principal de visualização.")
+
 elif aba == "Cadastro (Form)":
     st.subheader("📝 Novo Registro (Formulário Executivo)")
     st.markdown("Preencha os dados abaixo para registrar uma nova **Despesa**, **Receita** ou **Transferência** com suporte a parcelamento e cartões de crédito.")
