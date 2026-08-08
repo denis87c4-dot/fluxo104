@@ -952,7 +952,6 @@ elif aba == "Cadastro (Form)":
             dia_fechamento = int(cartao_selecionado_row["Fechamento"]) if eh_cartao else 0
             dia_vencimento = int(cartao_selecionado_row["Vencimento"]) if (eh_cartao and "Vencimento" in cartao_selecionado_row) else 10
             
-            # Define a base da fatura da primeira parcela considerando o fechamento
             data_fatura_base = data_compra
             if eh_cartao and dia_fechamento > 0 and data_compra.day > dia_fechamento:
                 data_fatura_base = data_compra + relativedelta(months=1)
@@ -983,6 +982,10 @@ elif aba == "Cadastro (Form)":
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
                 if eh_cartao:
+                    # Se for efetivado, o valor total entra inteiro na data da compra (data_compra original)
+                    valor_efetivado_registro = valor_total if status == "Efetivado" else round(valor_parcela, 2)
+                    data_efetivado_registro = data_compra if status == "Efetivado" else data_base_parcela
+
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": "Efetivado",
@@ -990,8 +993,8 @@ elif aba == "Cadastro (Form)":
                         "Categoria": categoria_final,
                         "Conta": conta_final,
                         "ContaDestino": "",
-                        "Valor": round(valor_parcela, 2),
-                        "Data": str(data_base_parcela),
+                        "Valor": valor_efetivado_registro,
+                        "Data": str(data_efetivado_registro),
                         "Parcela": f"{i+1}/{parcelas}"
                     })
 
@@ -1007,6 +1010,10 @@ elif aba == "Cadastro (Form)":
                         "Parcela": f"{i+1}/{parcelas}"
                     })
                 else:
+                    # Se for efetivado, o valor total entra inteiro na data da compra (data_compra original)
+                    valor_registro = valor_total if status == "Efetivado" else round(valor_parcela, 2)
+                    data_registro = data_compra if status == "Efetivado" else data_base_parcela
+
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": status,
@@ -1014,8 +1021,8 @@ elif aba == "Cadastro (Form)":
                         "Categoria": categoria_final,
                         "Conta": conta_final,
                         "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
-                        "Valor": round(valor_parcela, 2),
-                        "Data": str(data_base_parcela),
+                        "Valor": valor_registro,
+                        "Data": str(data_registro),
                         "Parcela": f"{i+1}/{parcelas}"
                     })
 
