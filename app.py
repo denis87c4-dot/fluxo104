@@ -944,7 +944,6 @@ elif aba == "Cadastro (Form)":
         else:
             novos_registros = []
             
-            # Identifica se é compra em cartão cadastrado
             eh_cartao = (tipo == "Despesa" and cartao_selecionado_row is not None and "Fechamento" in cartao_selecionado_row)
             dia_fechamento = int(cartao_selecionado_row["Fechamento"]) if eh_cartao else 0
             dia_vencimento = int(cartao_selecionado_row["Vencimento"]) if (eh_cartao and "Vencimento" in cartao_selecionado_row) else 10
@@ -959,7 +958,6 @@ elif aba == "Cadastro (Form)":
                 else:
                     data_base_parcela = data_compra
 
-                # Cálculo da data da fatura (Budget) baseada no fechamento e vencimento
                 data_fatura_parcela = data_base_parcela
                 if eh_cartao and dia_fechamento > 0:
                     if (i == 0 and data_compra.day > dia_fechamento) or (i > 0):
@@ -978,7 +976,6 @@ elif aba == "Cadastro (Form)":
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
                 if eh_cartao:
-                    # TRANSAÇÃO 1: Efetivada (abate limite / registra o ato da compra no dia real)
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": "Efetivado",
@@ -991,7 +988,6 @@ elif aba == "Cadastro (Form)":
                         "Parcela": f"{i+1}/{parcelas}"
                     })
 
-                    # TRANSAÇÃO 2: Budget (gerada automaticamente para o mês de vencimento da fatura)
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": "Budget",
@@ -1004,7 +1000,6 @@ elif aba == "Cadastro (Form)":
                         "Parcela": f"{i+1}/{parcelas}"
                     })
                 else:
-                    # Lançamentos normais de conta corrente, receitas ou transferências
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": status,
