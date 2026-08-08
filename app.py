@@ -952,6 +952,11 @@ elif aba == "Cadastro (Form)":
             dia_fechamento = int(cartao_selecionado_row["Fechamento"]) if eh_cartao else 0
             dia_vencimento = int(cartao_selecionado_row["Vencimento"]) if (eh_cartao and "Vencimento" in cartao_selecionado_row) else 10
             
+            # Define a base da fatura da primeira parcela considerando o fechamento
+            data_fatura_base = data_compra
+            if eh_cartao and dia_fechamento > 0 and data_compra.day > dia_fechamento:
+                data_fatura_base = data_compra + relativedelta(months=1)
+            
             for i in range(parcelas):
                 if frequencia == "Mensal":
                     data_base_parcela = data_compra + relativedelta(months=i)
@@ -964,9 +969,7 @@ elif aba == "Cadastro (Form)":
 
                 data_fatura_parcela = data_base_parcela
                 if eh_cartao and dia_fechamento > 0:
-                    if (i == 0 and data_compra.day > dia_fechamento) or (i > 0):
-                        data_fatura_parcela = data_base_parcela + relativedelta(months=1) if i == 0 else data_base_parcela + relativedelta(months=1)
-                    
+                    data_fatura_parcela = data_fatura_base + relativedelta(months=i)
                     try:
                         data_fatura_parcela = data_fatura_parcela.replace(day=min(dia_vencimento, 28))
                     except:
@@ -988,7 +991,7 @@ elif aba == "Cadastro (Form)":
                         "Conta": conta_final,
                         "ContaDestino": "",
                         "Valor": round(valor_parcela, 2),
-                        "Data": str(data_compra if i == 0 else data_base_parcela),
+                        "Data": str(data_base_parcela),
                         "Parcela": f"{i+1}/{parcelas}"
                     })
 
