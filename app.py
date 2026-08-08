@@ -120,7 +120,8 @@ if aba == "Dashboard":
 
         despesas_cartao_mes = df_mes_atual[
             (df_mes_atual["Tipo"] == "Despesa") & 
-            (df_mes_atual["Conta"].isin(cartoes_nomes))
+            (df_mes_atual["Conta"].isin(cartoes_nomes)) &
+            (df_mes_atual["Status"] == "Budget")
         ]["Valor"].sum()
 
         net_savings_rate = ((receitas_mes - despesas_conta_corrente) / receitas_mes * 100) if receitas_mes > 0 else 0.0
@@ -181,7 +182,7 @@ if aba == "Dashboard":
         cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         
         df_hist["Expense_CC"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
-        df_hist["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist else 0.0, axis=1)
+        df_hist["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist and r["Status"] == "Budget" else 0.0, axis=1)
         df_hist["Income_Val"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
         
         pivot_hist = df_hist.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC", "Expense_Card"], aggfunc="sum", fill_value=0.0).reset_index()
@@ -267,9 +268,12 @@ elif aba == "Resumo Geral":
             (~df_mes_efetivado["Conta"].isin(cartoes_nomes))
         ]["Valor"].sum()
 
-        total_passivo_cartao = df_mes_efetivado[
-            (df_mes_efetivado["Tipo"] == "Despesa") & 
-            (df_mes_efetivado["Conta"].isin(cartoes_nomes))
+        total_passivo_cartao = df[
+            (df["Data"].dt.year == ano_sel) & 
+            (df["Data"].dt.month == mes_sel) & 
+            (df["Tipo"] == "Despesa") & 
+            (df["Conta"].isin(cartoes_nomes)) & 
+            (df["Status"] == "Budget")
         ]["Valor"].sum()
 
         total_transferencias = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Transferência"]["Valor"].sum()
