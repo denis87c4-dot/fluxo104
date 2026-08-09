@@ -118,11 +118,13 @@ if aba == "Dashboard":
             
         saldo_liquido_real = receitas_mes - despesas_conta_corrente
 
-        despesas_cartao_mes = df_mes_atual[
+        df_cartoes_mes = df_mes_atual[
             (df_mes_atual["Tipo"] == "Despesa") & 
             (df_mes_atual["Conta"].isin(cartoes_nomes)) &
             (df_mes_atual["Status"] == "Budget")
-        ]["Valor"].sum()
+        ]
+        despesas_por_cartao = df_cartoes_mes.groupby("Conta")["Valor"].sum() if not df_cartoes_mes.empty else pd.Series(dtype=float)
+        despesas_cartao_mes = df_cartoes_mes["Valor"].sum()
 
         net_savings_rate = ((receitas_mes - despesas_conta_corrente) / receitas_mes * 100) if receitas_mes > 0 else 0.0
         comprometimento_renda = (despesas_conta_corrente / receitas_mes * 100) if receitas_mes > 0 else 0.0
@@ -135,6 +137,7 @@ if aba == "Dashboard":
         receitas_mes = 0.0
         despesas_conta_corrente = 0.0
         despesas_cartao_mes = 0.0
+        despesas_por_cartao = pd.Series(dtype=float)
         budget_despesas = 0.0
         budget_receitas = 0.0
         despesas_vencidas = 0.0
@@ -158,6 +161,9 @@ if aba == "Dashboard":
         st.metric("📉 DESPESAS (C/C)", f"R$ {despesas_conta_corrente:,.2f}", delta=f"{delta_desp:+.1f}% vs mês ant.", delta_color="inverse")
     with col3:
         st.metric("💳 PASSIVO CARTÕES (Fatura)", f"R$ {despesas_cartao_mes:,.2f}", delta="Saldo Devedor", delta_color="inverse")
+        if not despesas_por_cartao.empty:
+            for cartao, val in despesas_por_cartao.items():
+                st.markdown(f"<small>• <b>{cartao}</b>: R$ {val:,.2f}</small>", unsafe_allow_html=True)
     with col4:
         st.metric("💵 SALDO LÍQUIDO REAL", f"R$ {saldo_liquido_real:,.2f}", delta="Caixa Imediato", delta_color="normal")
 
@@ -957,7 +963,6 @@ elif aba == "Cadastro (Form)":
                 data_fatura_base = data_compra + relativedelta(months=1)
             
             if eh_cartao:
-                # Registro Efetivado único com o valor total da compra na data da compra
                 novos_registros.append({
                     "Tipo": tipo,
                     "Status": "Efetivado",
@@ -970,7 +975,6 @@ elif aba == "Cadastro (Form)":
                     "Parcela": f"1/{parcelas}" if parcelas > 1 else "1/1"
                 })
 
-                # Registros Budget (fatura) espelhados/parcelados conforme o loop
                 for i in range(parcelas):
                     if frequencia == "Mensal":
                         data_base_parcela = data_compra + relativedelta(months=i)
