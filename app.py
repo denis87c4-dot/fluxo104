@@ -665,8 +665,8 @@ elif aba == "Monthly Audit":
         st.info("Nenhum lançamento cadastrado no sistema.")
 
 elif aba == "Financial Indicators":
-    st.subheader("📈 Financial Indicators (Budget & Performance)")
-    st.markdown("Indicadores financeiros de alta performance calculados mês a mês com base no planejamento (Budget), incluindo Runway, Comprometimento de Fixas e Projeção Preditiva.")
+    st.subheader("📈 Financial Indicators (Budget)")
+    st.markdown("Indicadores financeiros calculados mês a mês com base no planejamento (Budget).")
     
     df = st.session_state.lancamentos
     if not df.empty and not df[df["Status"] == "Budget"].empty:
@@ -676,51 +676,7 @@ elif aba == "Financial Indicators":
         
         meses = sorted(df_b["AnoMes"].unique())
         
-        st.markdown("### 🚀 Indicadores de Elite (Runway, Cobertura de Fixas e Forecast)")
-        dados_novos_kpis = []
-        
-        # Calcular caixa acumulado global até cada mês
-        for m in meses:
-            df_m = df_b[df_b["AnoMes"] == m]
-            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
-            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            
-            # Patrimônio líquido / Caixa acumulado até o mês m
-            df_ate_mes = df_b[df_b["AnoMes"] <= m]
-            caixa_acumulado = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
-            
-            # 1. Runway (Meses de Sobrevivência)
-            burn_rate_mensal = expense
-            runway_meses = caixa_acumulado / burn_rate_mensal if burn_rate_mensal > 0 else float('inf')
-            runway_str = f"{runway_meses:.1f} meses" if runway_meses != float('inf') else "Infinito (Sem Despesas)"
-            
-            # 2. Índice de Cobertura / Comprometimento de Despesas Fixas
-            despesas_fixas = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("Moradia|Aluguel|Fixa|Conta|Dívida", case=False, na=False))]["Valor"].sum()
-            comprometimento_fixas = (despesas_fixas / income * 100) if income > 0 else 0.0
-            fixas_str = f"{comprometimento_fixas:.1f}%"
-            
-            # 3. Projeção Preditiva de Fechamento (Forecast to Close)
-            hoje = datetime.date.today()
-            dia_atual = hoje.day if hoje.strftime("%Y-%m") == m else 28 # se for mês atual usa dia real, senão assume mês fechado
-            proximo_mes = datetime.strptime(m + "-01", "%Y-%m-%d").date() + relativedelta(months=1)
-            dias_no_mes = (proximo_mes - relativedelta(days=1)).day
-            
-            gasto_ate_momento = expense # No budget considera o total planejado ou proporcional
-            media_diaria = gasto_ate_momento / dia_atual if dia_atual > 0 else 0
-            forecast_close = media_diaria * dias_no_mes
-            forecast_str = f"R$ {forecast_close:,.2f}"
-            
-            dados_novos_kpis.append({
-                "Mês": m,
-                "Runway (Sobrevivência)": runway_str,
-                "Comprometimento Fixas": fixas_str,
-                "Forecast to Close": forecast_str
-            })
-            
-        st.dataframe(pd.DataFrame(dados_novos_kpis).set_index("Mês"), use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📊 Strategic Metrics (1 a 3)")
+        st.markdown("### 🚀 Strategic Metrics (1 a 3)")
         dados_avancados_3 = []
         for m in meses:
             df_m = df_b[df_b["AnoMes"] == m]
