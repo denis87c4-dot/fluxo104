@@ -956,43 +956,45 @@ elif aba == "Cadastro (Form)":
             if eh_cartao and dia_fechamento > 0 and data_compra.day > dia_fechamento:
                 data_fatura_base = data_compra + relativedelta(months=1)
             
-            for i in range(parcelas):
-                if frequencia == "Mensal":
-                    data_base_parcela = data_compra + relativedelta(months=i)
-                elif frequencia == "Quinzenal":
-                    data_base_parcela = data_compra + relativedelta(weeks=2*i)
-                elif frequencia == "Anual":
-                    data_base_parcela = data_compra + relativedelta(years=i)
-                else:
-                    data_base_parcela = data_compra
+            if eh_cartao:
+                # Registro Efetivado único com o valor total da compra na data da compra
+                novos_registros.append({
+                    "Tipo": tipo,
+                    "Status": "Efetivado",
+                    "Descricao": f"[Compra Cartão] {descricao}",
+                    "Categoria": categoria_final,
+                    "Conta": conta_final,
+                    "ContaDestino": "",
+                    "Valor": round(valor_total, 2),
+                    "Data": str(data_compra),
+                    "Parcela": f"1/{parcelas}" if parcelas > 1 else "1/1"
+                })
 
-                data_fatura_parcela = data_base_parcela
-                if eh_cartao and dia_fechamento > 0:
-                    data_fatura_parcela = data_fatura_base + relativedelta(months=i)
-                    try:
-                        data_fatura_parcela = data_fatura_parcela.replace(day=min(dia_vencimento, 28))
-                    except:
-                        pass
+                # Registros Budget (fatura) espelhados/parcelados conforme o loop
+                for i in range(parcelas):
+                    if frequencia == "Mensal":
+                        data_base_parcela = data_compra + relativedelta(months=i)
+                    elif frequencia == "Quinzenal":
+                        data_base_parcela = data_compra + relativedelta(weeks=2*i)
+                    elif frequencia == "Anual":
+                        data_base_parcela = data_compra + relativedelta(years=i)
+                    else:
+                        data_base_parcela = data_compra
 
-                if modo_valor == "Dividir Total" and parcelas > 0:
-                    valor_parcela = valor_total / parcelas
-                else:
-                    valor_parcela = valor_total
+                    data_fatura_parcela = data_base_parcela
+                    if dia_fechamento > 0:
+                        data_fatura_parcela = data_fatura_base + relativedelta(months=i)
+                        try:
+                            data_fatura_parcela = data_fatura_parcela.replace(day=min(dia_vencimento, 28))
+                        except:
+                            pass
 
-                desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
+                    if modo_valor == "Dividir Total" and parcelas > 0:
+                        valor_parcela = valor_total / parcelas
+                    else:
+                        valor_parcela = valor_total
 
-                if eh_cartao:
-                    novos_registros.append({
-                        "Tipo": tipo,
-                        "Status": "Efetivado",
-                        "Descricao": f"[Compra Cartão] {desc_formatada}",
-                        "Categoria": categoria_final,
-                        "Conta": conta_final,
-                        "ContaDestino": "",
-                        "Valor": round(valor_parcela, 2),
-                        "Data": str(data_base_parcela),
-                        "Parcela": f"{i+1}/{parcelas}"
-                    })
+                    desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
                     novos_registros.append({
                         "Tipo": tipo,
@@ -1005,7 +1007,24 @@ elif aba == "Cadastro (Form)":
                         "Data": str(data_fatura_parcela),
                         "Parcela": f"{i+1}/{parcelas}"
                     })
-                else:
+            else:
+                for i in range(parcelas):
+                    if frequencia == "Mensal":
+                        data_base_parcela = data_compra + relativedelta(months=i)
+                    elif frequencia == "Quinzenal":
+                        data_base_parcela = data_compra + relativedelta(weeks=2*i)
+                    elif frequencia == "Anual":
+                        data_base_parcela = data_compra + relativedelta(years=i)
+                    else:
+                        data_base_parcela = data_compra
+
+                    if modo_valor == "Dividir Total" and parcelas > 0:
+                        valor_parcela = valor_total / parcelas
+                    else:
+                        valor_parcela = valor_total
+
+                    desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
+
                     novos_registros.append({
                         "Tipo": tipo,
                         "Status": status,
