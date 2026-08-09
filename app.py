@@ -982,61 +982,41 @@ elif aba == "Cadastro (Form)":
                 desc_formatada = f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
 
                 if eh_cartao:
-                    if status == "Efetivado":
-                        # Quando efetivado em cartão, o valor total entra integralmente uma única vez na data da compra original
-                        if i == 0:
-                            novos_registros.append({
-                                "Tipo": tipo,
-                                "Status": "Efetivado",
-                                "Descricao": f"[Compra Cartão] {descricao}",
-                                "Categoria": categoria_final,
-                                "Conta": conta_final,
-                                "ContaDestino": "",
-                                "Valor": valor_total,
-                                "Data": str(data_compra),
-                                "Parcela": f"1/{parcelas}" if parcelas > 1 else "1/1"
-                            })
-                    else:
-                        # Registro de Budget padrão para controle de faturas futuras
-                        novos_registros.append({
-                            "Tipo": tipo,
-                            "Status": "Budget",
-                            "Descricao": f"[Fatura Foco] {desc_formatada}",
-                            "Categoria": categoria_final,
-                            "Conta": conta_final,
-                            "ContaDestino": "",
-                            "Valor": round(valor_parcela, 2),
-                            "Data": str(data_fatura_parcela),
-                            "Parcela": f"{i+1}/{parcelas}"
-                        })
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": "Efetivado",
+                        "Descricao": f"[Compra Cartão] {desc_formatada}",
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_base_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
+
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": "Budget",
+                        "Descricao": f"[Fatura Foco] {desc_formatada}",
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_fatura_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
                 else:
-                    if status == "Efetivado":
-                        # Quando efetivado em conta corrente/outros, o valor total entra integralmente uma única vez na data da compra original
-                        if i == 0:
-                            novos_registros.append({
-                                "Tipo": tipo,
-                                "Status": "Efetivado",
-                                "Descricao": desc_formatada,
-                                "Categoria": categoria_final,
-                                "Conta": conta_final,
-                                "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
-                                "Valor": valor_total,
-                                "Data": str(data_compra),
-                                "Parcela": f"1/{parcelas}" if parcelas > 1 else "1/1"
-                            })
-                    else:
-                        # Registro de Budget padrão parcelado ou único
-                        novos_registros.append({
-                            "Tipo": tipo,
-                            "Status": "Budget",
-                            "Descricao": desc_formatada,
-                            "Categoria": categoria_final,
-                            "Conta": conta_final,
-                            "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
-                            "Valor": round(valor_parcela, 2),
-                            "Data": str(data_base_parcela),
-                            "Parcela": f"{i+1}/{parcelas}"
-                        })
+                    novos_registros.append({
+                        "Tipo": tipo,
+                        "Status": status,
+                        "Descricao": desc_formatada,
+                        "Categoria": categoria_final,
+                        "Conta": conta_final,
+                        "ContaDestino": conta_destino_final if tipo == "Transferência" else "",
+                        "Valor": round(valor_parcela, 2),
+                        "Data": str(data_base_parcela),
+                        "Parcela": f"{i+1}/{parcelas}"
+                    })
 
             df_novo = pd.DataFrame(novos_registros)
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
