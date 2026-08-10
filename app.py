@@ -1225,6 +1225,41 @@ elif aba == "Cartões":
     else:
         st.info("Nenhum cartão ou conta cadastrado.")
 
+elif aba == "KPIs Avançados":
+    st.subheader("📊 KPIs Avançados")
+    st.markdown("Painel dividido em dois blocos: Financeiro e Estatístico.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # ===================== PAINEL FINANCEIRO =====================
+        st.markdown("## 💵 Painel Financeiro")
+        receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
+        despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
+        saldo_liquido = receitas - despesas
+        taxa_poupanca = (saldo_liquido / receitas * 100) if receitas > 0 else 0.0
+        comprometimento_renda = (despesas / receitas * 100) if receitas > 0 else 0.0
+        cash_ratio = (receitas / despesas) if despesas > 0 else 0.0
+        burn_rate = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: st.metric("💰 Net Savings Rate", f"{taxa_poupanca:.1f}%")
+        with col2: st.metric("🛡️ Cash Ratio", f"{cash_ratio:.2f}x")
+        with col3: st.metric("🔥 Burn Rate", f"R$ {burn_rate:,.2f}")
+        with col4: st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%")
+
+        pivot_fin = df.pivot_table(index="AnoMes", values=["Valor"], columns="Tipo", aggfunc="sum", fill_value=0.0).reset_index()
+        pivot_fin["Saldo"] = pivot_fin["Receita"] - pivot_fin["Despesa"]
+        pivot_fin["TaxaPoupanca"] = (pivot_fin["Saldo"] / pivot_fin["Receita"] * 100).fillna(0.0)
+
+        st.markdown("#### Receita vs Despesa")
+        chart_rd = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f")
+        ) + alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
+
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
     nova_cat = st.text_input("Nome da Nova Categorias")
