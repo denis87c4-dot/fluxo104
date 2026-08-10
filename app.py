@@ -55,7 +55,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
     except Exception:
         return df_styled
 
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "KPIs Avançados", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
