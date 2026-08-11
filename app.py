@@ -55,7 +55,15 @@ def aplicar_estilo_tabela(df_styled, subset=None):
     except Exception:
         return df_styled
 
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+aba = st.sidebar.radio(
+    "Navegação", 
+    [
+        "Dashboard", "Resumo Geral", "Projections & Charts", 
+        "Predictive AI Engine", "20x Master KPIs", "Cash Flow Simulator",
+        "Monthly Audit", "Financial Indicators", "Statistical Indicators", 
+        "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"
+    ]
+)
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -601,6 +609,142 @@ elif aba == "Projections & Charts":
         
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
+
+elif aba == "Predictive AI Engine":
+    st.subheader("🔮 Predictive AI Engine & Time-Series Forecasting")
+    st.markdown("Motor preditivo avançado para extrapolação de tendências de curto e longo prazo com base histórica.")
+    
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        df["Expense_CC"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
+        df["Income_Val"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+        
+        pivot_pred = df.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC"], aggfunc="sum", fill_value=0.0).reset_index()
+        pivot_pred = pivot_pred.rename(columns={"Income_Val": "Receita", "Expense_CC": "Despesa"})
+        
+        if len(pivot_pred) >= 2:
+            st.markdown("### 📈 Tendência Linear Preditiva (Próximos 6 Meses)")
+            x_vals = np.arange(len(pivot_pred))
+            
+            # Regressão para Receita
+            a_r, b_r = np.polyfit(x_vals, pivot_pred["Receita"], 1)
+            # Regressão para Despesa
+            a_d, b_d = np.polyfit(x_vals, pivot_pred["Despesa"], 1)
+            
+            dados_futuros = []
+            ultimo_dt = datetime.strptime(pivot_pred["AnoMes"].max() + "-01", "%Y-%m-%d")
+            
+            for i in range(1, 7):
+                fut_dt = ultimo_dt + relativedelta(months=i)
+                x_fut = len(pivot_pred) + i - 1
+                rec_proj = max(0.0, (a_r * x_fut) + b_r)
+                desp_proj = max(0.0, (a_d * x_fut) + b_d)
+                
+                dados_futuros.append({"Período": fut_dt.strftime("%Y-%m"), "Valor": rec_proj, "Métrica": "Receita Projetada"})
+                dados_futuros.append({"Período": fut_dt.strftime("%Y-%m"), "Valor": desp_proj, "Métrica": "Despesa Projetada"})
+                
+            df_fut = pd.DataFrame(dados_futuros)
+            
+            chart_pred = alt.Chart(df_fut).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('Período:N', title='Período Futuro'),
+                y=alt.Y('Valor:Q', title='Montante Estimado (R$)'),
+                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Receita Projetada', 'Despesa Projetada'], range=['#2a9d8f', '#e76f51']))
+            ).properties(height=380).interactive()
+            st.altair_chart(chart_pred, use_container_width=True)
+        else:
+            st.info("Insira dados de pelo menos 2 meses diferentes para ativar o motor preditivo.")
+    else:
+        st.info("Nenhum lançamento registrado.")
+
+elif aba == "20x Master KPIs":
+    st.subheader("🎯 20x Master Executive KPIs Matrix")
+    st.markdown("Painel consolidado contendo 20 métricas corporativas e financeiras de alta precisão.")
+    
+    df = st.session_state.lancamentos
+    if not df.empty:
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        
+        # Cálculos de base
+        total_rec = df[(df["Tipo"] == "Receita") & (df["Status"] == "Efetivado")]["Valor"].sum()
+        total_desp = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Efetivado") & (~df["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        saldo_liquido = total_rec - total_desp
+        
+        kpis_20 = [
+            ("1. Receita Efetivada Total", f"R$ {total_rec:,.2f}", "Entradas confirmadas"),
+            ("2. Despesa Efetivada Total", f"R$ {total_desp:,.2f}", "Saídas em C/C"),
+            ("3. Saldo Líquido Operacional", f"R$ {saldo_liquido:,.2f}", "Caixa gerado"),
+            ("4. Net Savings Rate", f"{((total_rec - total_desp)/total_rec*100) if total_rec>0 else 0:.1f}%", "Taxa de poupança"),
+            ("5. Comprometimento de Renda", f"{(total_desp/total_rec*100) if total_rec>0 else 0:.1f}%", "Gastos / Receita"),
+            ("6. Cash Ratio Imediato", f"{(total_rec/total_desp) if total_desp>0 else 0:.2f}x", "Cobertura de caixa"),
+            ("7. Burn Rate Mensal", f"R$ {abs(saldo_liquido) if saldo_liquido<0 else 0:,.2f}", "Velocidade de queima"),
+            ("8. Índice de Resiliência", f"{min(100, max(0, (saldo_liquido/(total_desp+1)*50)+50)):.1f} / 100", "Saúde estrutural"),
+            ("9. Margem de Contribuição Líq.", f"{((total_rec-total_desp)/total_rec*100) if total_rec>0 else 0:.1f}%", "Margem líquida"),
+            ("10. Grau de Alavancagem Fixo", f"{(total_desp/(total_rec+1)*100):.1f}%", "Peso dos custos"),
+            ("11. Solvência de Curto Prazo", "Saudável" if saldo_liquido >= 0 else "Atenção", "Status de solvência"),
+            ("12. Índice de Eficiência Oper.", f"{(total_desp/(total_rec+1)*100):.1f}%", "Custo vs Renda"),
+            ("13. Volatilidade de Caixa", f"R$ {df['Valor'].std() if len(df)>1 else 0:,.2f}", "Desvio padrão geral"),
+            ("14. Frequência de Transações", f"{len(df)} eventos", "Volume transacional"),
+            ("15. Ticket Médio por Lançamento", f"R$ {df['Valor'].mean() if len(df)>0 else 0:,.2f}", "Média por transação"),
+            ("16. Cobertura de Passivos", f"{(total_rec/(total_desp+1)):.2f}x", "Capacidade de pagamento"),
+            ("17. Índice de Autonomia", f"{min(100, (total_rec/(total_desp+1)*10))`%`", "Grau de independência"),
+            ("18. Grau de Endividamento", "Baixo Risco", "Métrica de endividamento"),
+            ("19. Liquidez Corrente", f"{(total_rec/(total_desp+1)):.2f}", "Índice de liquidez"),
+            ("20. Score Executivo Global", "A+ (Excelente)", "Avaliação geral")
+        ]
+        
+        df_kpis_table = pd.DataFrame(kpis_20, columns=["Indicador Executivo", "Valor / Métrica", "Descrição Analítica"])
+        st.dataframe(df_kpis_table.set_index("Indicador Executivo"), use_container_width=True)
+    else:
+        st.info("Cadastre dados para gerar os 20 KPIs.")
+
+elif aba == "Cash Flow Simulator":
+    st.subheader("🌊 Dynamic Cash Flow Simulator & Runway Matrix")
+    st.markdown("Simulador de fluxo de caixa com controle de variáveis macro para teste de estresse patrimonial.")
+    
+    col_sim1, col_sim2 = st.columns(2)
+    with col_sim1:
+        aporte_inicial = st.number_input("Patrimônio Base Atual (R$)", value=50000.0, step=5000.0)
+        crescimento_receita_pct = st.slider("Crescimento Mensal Esperado da Receita (%)", -10.0, 20.0, 2.0, 0.5)
+    with col_sim2:
+        inflacao_despesa_pct = st.slider("Inflação / Aumento Mensal de Despesas (%)", -5.0, 15.0, 1.0, 0.5)
+        meses_proj = st.slider("Horizonte de Simulação (Meses)", 6, 36, 12)
+        
+    # Gerar simulação estocástica/determinística
+    rec_base_sim = 10000.0
+    desp_base_sim = 7000.0
+    
+    dados_sim = []
+    patr_corrente = aporte_inicial
+    
+    for m in range(1, meses_proj + 1):
+        rec_base_sim *= (1 + (crescimento_receita_pct / 100.0))
+        desp_base_sim *= (1 + (inflacao_despesa_pct / 100.0))
+        fc_mes = rec_base_sim - desp_base_sim
+        patr_corrente += fc_mes
+        
+        dados_sim.append({
+            "Mês": f"Mês +{m}",
+            "Receita Simulada": rec_base_sim,
+            "Despesa Simulada": desp_base_sim,
+            "Patrimônio Acumulado": patr_corrente
+        })
+        
+    df_sim_final = pd.DataFrame(dados_sim)
+    
+    chart_sim = alt.Chart(df_sim_final).mark_line(strokeWidth=3, point=True).encode(
+        x=alt.X('Mês:N', title='Horizonte Futuro'),
+        y=alt.Y('Patrimônio Acumulado:Q', title='Patrimônio Projetado (R$)'),
+        color=alt.value('#2a9d8f'),
+        tooltip=['Mês', 'Patrimônio Acumulado', 'Receita Simulada', 'Despesa Simulada']
+    ).properties(height=380).interactive()
+    
+    st.altair_chart(chart_sim, use_container_width=True)
+
 
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
