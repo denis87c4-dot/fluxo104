@@ -294,28 +294,118 @@ elif aba == "Resumo Geral":
         saldo_liquido_efetivado = total_entradas - total_saidas_cc
         
         st.markdown("---")
+elif aba == "Resumo Geral":
+    st.subheader("📋 Resumo Geral - Executive Financial Summary")
+    st.markdown("Painel executivo consolidado com controle dinâmico por **Célula Suspensa** (**Budget** vs **Efetivado**) e indicadores de performance.")
+    
+    df = st.session_state.lancamentos
+    
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        col_rg1, col_rg2, col_rg3, col_rg4, col_rg5 = st.columns(5)
-        with col_rg1:
-            st.metric("🟢 Total Entradas", f"R$ {total_entradas:,.2f}", delta="Efetivado")
-        with col_rg2:
-            st.metric("🔴 Saídas (C/C)", f"R$ {total_saidas_cc:,.2f}", delta="Efetivado", delta_color="inverse")
-        with col_rg3:
-            st.metric("💳 Passivo Cartão", f"R$ {total_passivo_cartao:,.2f}", delta="Saldo Devedor", delta_color="inverse")
-        with col_rg4:
-            st.metric("🔵 Transferências", f"R$ {total_transferencias:,.2f}", delta="Efetivado")
-        with col_rg5:
-            st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido_efetivado:,.2f}", delta="Caixa Real", delta_color="normal")
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
+            
+        # ==================== CÉLULA SUSPENSA EXECUTIVA ====================
+        with st.container():
+            st.markdown("""
+                <div style='background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 20px;'>
+                    <h4 style='color: #2a9d8f; margin-top: 0;'>🎛️ Célula Suspensa - Painel de Controle de Parâmetros</h4>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            col_cs1, col_cs2, col_cs3 = st.columns(3)
+            with col_cs1:
+                mes_selecionado_rg = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, key="sel_mes_resumo_geral_exec")
+            with col_cs2:
+                status_selecionado_rg = st.selectbox("🎯 Status / Fase Orçamentária", ["Todos", "Efetivado", "Budget"], key="sel_status_resumo_geral_exec")
+            with col_cs3:
+                tipo_filtro_rg = st.multiselect("🏷️ Filtrar Tipos", ["Receita", "Despesa", "Transferência"], default=["Receita", "Despesa", "Transferência"], key="sel_tipo_rg")
+        
+        st.markdown("---")
+        
+        ano_sel, mes_sel = map(int, mes_selecionado_rg.split("-"))
+        
+        # Filtragem base do período
+        df_periodo = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
+        
+        if status_selecionado_rg != "Todos":
+            df_periodo = df_periodo[df_periodo["Status"] == status_selecionado_rg]
+            
+        if tipo_filtro_rg:
+            df_periodo = df_periodo[df_periodo["Tipo"].isin(tipo_filtro_rg)]
+            
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        
+        # Métricas Executivas
+        total_entradas = df_periodo[df_periodo["Tipo"] == "Receita"]["Valor"].sum()
+        total_saidas_cc = df_periodo[(df_periodo["Tipo"] == "Despesa") & (~df_periodo["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        total_passivo_cartao = df_periodo[(df_periodo["Tipo"] == "Despesa") & (df_periodo["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        total_transferencias = df_periodo[df_periodo["Tipo"] == "Transferência"]["Valor"].sum()
+        
+        saldo_liquido = total_entradas - total_saidas_cc
+        net_savings_rate = ((total_entradas - total_saidas_cc) / total_entradas * 100) if total_entradas > 0 else 0.0
+        
+        # Exibição dos KPIs em Cards Estilizados
+        st.markdown(f"### 📊 Indicadores Consolidados ({mes_selecionado_rg} | Status: **{status_selecionado_rg}**)")
+        
+        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+        with col_m1:
+            st.metric("🟢 Entradas / Receitas", f"R$ {total_entradas:,.2f}", delta="Inflow")
+        with col_m2:
+            st.metric("🔴 Saídas (C/C)", f"R$ {total_saidas_cc:,.2f}", delta="Outflow", delta_color="inverse")
+        with col_m3:
+            st.metric("💳 Passivo Cartões", f"R$ {total_passivo_cartao:,.2f}", delta="Fatura / Cartão", delta_color="inverse")
+        with col_m4:
+            st.metric("🔵 Transferências", f"R$ {total_transferencias:,.2f}", delta="Movimentação")
+        with col_m5:
+            st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}", delta=f"Net Savings: {net_savings_rate:.1f}%", delta_color="normal")
             
         st.markdown("---")
-        st.markdown(f"### 📄 Detalhamento dos Lançamentos Efetivados ({mes_selecionado_rg})")
         
-        if not df_mes_efetivado.empty:
-            df_exibicao = df_mes_efetivado[["Tipo", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"]].copy()
-            df_exibicao["Valor"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(aplicar_estilo_tabela(df_exibicao.style), use_container_width=True)
+        # Seção de Gráficos e Distribuição por Categoria
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("#### 📈 Distribuição de Despesas por Categoria")
+            df_desp_cat = df_periodo[df_periodo["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+            if not df_desp_cat.empty:
+                chart_cat = alt.Chart(df_desp_cat).mark_arc(innerRadius=50, outerRadius=100).encode(
+                    theta=alt.Theta(field="Valor", type="quantitative"),
+                    color=alt.Color(field="Categoria", type="nominal", scale=alt.Scale(scheme="tableau10")),
+                    tooltip=["Categoria", "Valor"]
+                ).properties(height=300).interactive()
+                st.altair_chart(chart_cat, use_container_width=True)
+            else:
+                st.info("Nenhuma despesa para exibir no gráfico de categorias.")
+                
+        with col_g2:
+            st.markdown("#### 💳 Gastos por Conta / Banco")
+            df_conta_val = df_periodo[df_periodo["Tipo"] == "Despesa"].groupby("Conta")["Valor"].sum().reset_index()
+            if not df_conta_val.empty:
+                chart_conta = alt.Chart(df_conta_val).mark_bar(color="#2a9d8f").encode(
+                    x=alt.X("Conta:N", title="Conta / Cartão"),
+                    y=alt.Y("Valor:Q", title="Montante (R$)"),
+                    tooltip=["Conta", "Valor"]
+                ).properties(height=300).interactive()
+                st.altair_chart(chart_conta, use_container_width=True)
+            else:
+                st.info("Nenhum dado por conta para exibir.")
+                
+        st.markdown("---")
+        st.markdown(f"### 📄 Tabela Analítica Detalhada ({mes_selecionado_rg})")
+        
+        if not df_periodo.empty:
+            df_exibicao = df_periodo[["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"]].copy()
+            df_exibicao["Valor_Fmt"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+            df_exibicao_clean = df_exibicao[["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor_Fmt", "Data", "Parcela"]].rename(columns={"Valor_Fmt": "Valor"})
+            st.dataframe(aplicar_estilo_tabela(df_exibicao_clean.style, subset=["Valor"]), use_container_width=True)
         else:
-            st.info(f"Nenhum lançamento com status **Efetivado** encontrado para o período de {mes_selecionado_rg}.")
+            st.info(f"Nenhum lançamento encontrado para os filtros selecionados em {mes_selecionado_rg}.")
     else:
         st.info("Nenhum lançamento cadastrado no sistema.")
 
