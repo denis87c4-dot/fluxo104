@@ -246,55 +246,6 @@ if aba == "Dashboard":
         st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
 elif aba == "Resumo Geral":
-    st.subheader("📋 Resumo Geral - Efetivados por Mês")
-    st.markdown("Visão consolidada e limpa das Entradas, Saídas e Transferências estritamente **Efetivadas** no mês selecionado.")
-    
-    df = st.session_state.lancamentos
-    
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-        
-        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
-        mes_atual_padrao = datetime.today().strftime("%Y-%m")
-        if mes_atual_padrao not in meses_disponiveis:
-            meses_disponiveis.insert(0, mes_atual_padrao)
-            
-        st.markdown("### 🎛️ Célula Suspensa: Seleção de Período")
-        col_sel1, col_sel2 = st.columns([2, 4])
-        with col_sel1:
-            mes_selecionado_rg = st.selectbox("📅 Selecione o Mês (Ano-Mês)", meses_disponiveis, key="sel_mes_resumo_geral")
-        
-        ano_sel, mes_sel = map(int, mes_selecionado_rg.split("-"))
-        
-        df_mes_efetivado = df[
-            (df["Data"].dt.year == ano_sel) & 
-            (df["Data"].dt.month == mes_sel) & 
-            (df["Status"] == "Efetivado")
-        ]
-        
-        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-        total_entradas = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Receita"]["Valor"].sum()
-        
-        total_saidas_cc = df_mes_efetivado[
-            (df_mes_efetivado["Tipo"] == "Despesa") & 
-            (~df_mes_efetivado["Conta"].isin(cartoes_nomes))
-        ]["Valor"].sum()
-
-        total_passivo_cartao = df[
-            (df["Data"].dt.year == ano_sel) & 
-            (df["Data"].dt.month == mes_sel) & 
-            (df["Tipo"] == "Despesa") & 
-            (df["Conta"].isin(cartoes_nomes)) & 
-            (df["Status"] == "Budget")
-        ]["Valor"].sum()
-
-        total_transferencias = df_mes_efetivado[df_mes_efetivado["Tipo"] == "Transferência"]["Valor"].sum()
-        saldo_liquido_efetivado = total_entradas - total_saidas_cc
-        
-        st.markdown("---")
-elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Executive Financial Summary")
     st.markdown("Painel executivo consolidado com controle dinâmico por **Célula Suspensa** (**Budget** vs **Efetivado**) e indicadores de performance.")
     
@@ -721,9 +672,7 @@ elif aba == "Predictive AI Engine":
             st.markdown("### 📈 Tendência Linear Preditiva (Próximos 6 Meses)")
             x_vals = np.arange(len(pivot_pred))
             
-            # Regressão para Receita
             a_r, b_r = np.polyfit(x_vals, pivot_pred["Receita"], 1)
-            # Regressão para Despesa
             a_d, b_d = np.polyfit(x_vals, pivot_pred["Despesa"], 1)
             
             dados_futuros = []
@@ -759,7 +708,6 @@ elif aba == "20x Master KPIs":
     if not df.empty:
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         
-        # Cálculos de base
         total_rec = df[(df["Tipo"] == "Receita") & (df["Status"] == "Efetivado")]["Valor"].sum()
         total_desp = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Efetivado") & (~df["Conta"].isin(cartoes_nomes))]["Valor"].sum()
         saldo_liquido = total_rec - total_desp
@@ -804,7 +752,6 @@ elif aba == "Cash Flow Simulator":
         inflacao_despesa_pct = st.slider("Inflação / Aumento Mensal de Despesas (%)", -5.0, 15.0, 1.0, 0.5)
         meses_proj = st.slider("Horizonte de Simulação (Meses)", 6, 36, 12)
         
-    # Gerar simulação estocástica/determinística
     rec_base_sim = 10000.0
     desp_base_sim = 7000.0
     
@@ -834,7 +781,6 @@ elif aba == "Cash Flow Simulator":
     ).properties(height=380).interactive()
     
     st.altair_chart(chart_sim, use_container_width=True)
-
 
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
@@ -915,7 +861,7 @@ elif aba == "Monthly Audit":
             ac1.metric("📋 Total Budgetado", f"R$ {tot_b:,.2f}")
             ac2.metric("💳 Total Realizado", f"R$ {tot_e:,.2f}", delta=f"{((tot_e-tot_b)/tot_b*100 if tot_b>0 else 0):+.1f}% vs Budget", delta_color="inverse")
             ac3.metric("🎯 Saldo Orçamentário", f"R$ {tot_dif:,.2f}", delta="Sobrou / Falta", delta_color="normal")
-            ac4.metric("📊 Taxa de Execução", f"{(tot_e/tot_b*100 if tot_b>0 else 0):.1f}%")
+            ac4.metric("📊 Taxa de Execução", f"{(tot_e/tot_b*100 if tot_b>0 else 0):,.1f}%")
             
             st.markdown("---")
             st.markdown(f"### 📋 Tabela Analítica Consolidada por Categoria ({mes_audit_selecionado})")
