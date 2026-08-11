@@ -603,66 +603,121 @@ elif aba == "Projections & Charts":
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
 elif aba == "Monthly Audit":
-    st.subheader("🔍 Monthly Audit (Auditoria do Mês Atual)")
-    st.markdown("Acompanhamento estrito do mês atual por categoria: **Budget** vs **Entry (Efetivado/Realizado)** e a **Diferença**.")
+    elif aba == "Monthly Audit":
+    st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
+    st.markdown("Auditoria avançada de desempenho orçamentário com seleção de período, filtros, percentuais de desvio e análise de peso por categoria.")
     
     df = st.session_state.lancamentos
     if not df.empty:
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        ano_atual = datetime.today().year
-        mes_atual = datetime.today().month
-        
-        df_mes = df[(df["Data"].dt.year == ano_atual) & (df["Data"].dt.month == mes_atual) & (df["Tipo"] == "Despesa")]
-        
-        if not df_mes.empty:
-            df_budget_mes = df_mes[df_mes["Status"] == "Budget"].groupby("Categoria")["Valor"].sum()
-            df_entry_mes = df_mes[df_mes["Status"] == "Efetivado"].groupby("Categoria")["Valor"].sum()
+        # 1. Dropdown de Seleção de Período
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
             
-            todas_categorias = sorted(list(set(df_budget_mes.index.tolist() + df_entry_mes.index.tolist())))
+        col_m1, col_m2, col_m3 = st.columns([2, 2, 2])
+        with col_m1:
+            mes_audit_selecionado = st.selectbox("📅 Período de Auditoria", meses_disponiveis, key="audit_mes_sel")
+        
+        ano_aud, mes_aud = map(int, mes_audit_selecionado.split("-"))
+        
+        # Filtrar dados do mês selecionado (apenas despesas para auditoria de orçamento)
+        df_mes_audit = df[(df["Data"].dt.year == ano_aud) & (df["Data"].dt.month == mes_aud) & (df["Tipo"] == "Despesa")]
+        
+        if not df_mes_audit.empty:
+            # Filtros adicionais na barra lateral ou colunas
+            with col_m2:
+                categorias_disponiveis = sorted(df_mes_audit["Categoria"].unique().tolist())
+                filtro_cat_audit = st.multiselect("Filtrar Categorias", categorias_disponiveis, default=categorias_disponiveis)
+            with col_m3:
+                filtro_busca_audit = st.text_input("🔍 Buscar na Auditoria", placeholder="Descrição...")
+                
+            if filtro_cat_audit:
+                df_mes_audit = df_mes_audit[df_mes_audit["Categoria"].isin(filtro_cat_audit)]
+            if filtro_busca_audit.strip() != "":
+                df_mes_audit = df_mes_audit[df_mes_audit["Descricao"].str.contains(filtro_busca_audit, case=False, na=False)]
+
+            df_budget_m = df_mes_audit[df_mes_audit["Status"] == "Budget"].groupby("Categoria")["Valor"].sum()
+            df_entry_m = df_mes_audit[df_mes_audit["Status"] == "Efetivado"].groupby("Categoria")["Valor"].sum()
+            
+            todas_cats = sorted(list(set(df_budget_m.index.tolist() + df_entry_m.index.tolist())))
+            total_geral_realizado = df_entry_m.sum()
             
             dados_audit = []
-            for cat in todas_categorias:
-                b_val = df_budget_mes.get(cat, 0.0)
-                e_val = df_entry_mes.get(cat, 0.0)
-                dif_val = b_val - e_val
+            for cat in todas_cats:
+                b_val = df_budget_m.get(cat, 0.0)
+                e_val = df_entry_m.get(cat, 0.0)
+                dif_val = b_val - e_val  # Positivo = sobrou, Negativo = estourou
                 
-                if dif_val < 0:
-                    status_pagamento = f"⚠️ Estourado/Pendente (R$ {abs(dif_val):,.2f} acima)"
+                # Percentuais
+                perc_consumido = (e_val / b_val * 100) if b_val > 0 else (100.0 if e_val > 0 else 0.0)
+                perc_do_total = (e_val / total_geral_realizado * 100) if total_geral_realizado > 0 else 0.0
+                variacao_pct = ((e_val - b_val) / b_val * 100) if b_val > 0 else 0.0
+                
+                if e_val > b_val and b_val > 0:
+                    status_txt = f"🚨 Estourado (+{abs(variacao_pct):.1f}%)"
+                elif b_val == 0 and e_val > 0:
+                    status_txt = "⚠️ Sem Budget Prévio"
                 else:
-                    status_pagamento = f"✅ Dentro do Budget (Restam R$ {dif_val:,.2f})"
+                    status_txt = f"✅ Seguro ({perc_consumido:.0f}% usado)"
                 
                 dados_audit.append({
                     "Categoria": cat,
-                    "1. Budget (Mês)": b_val,
-                    "2. Entry (Efetivado)": e_val,
-                    "3. Diferença (Budget - Entry)": dif_val,
-                    "Status / Alerta": status_pagamento
+                    "Budget": b_val,
+                    "Realizado (Entry)": e_val,
+                    "Diferença (R$)": dif_val,
+                    "% Consumido": f"{perc_consumido:.1f}%",
+                    "% do Total": f"{perc_do_total:.1f}%",
+                    "Status": status_txt
                 })
                 
-            df_audit_table = pd.DataFrame(dados_audit).set_index("Categoria")
+            df_audit_res = pd.DataFrame(dados_audit).set_index("Categoria")
             
-            df_audit_fmt = df_audit_table.copy()
-            df_audit_fmt["1. Budget (Mês)"] = df_audit_fmt["1. Budget (Mês)"].apply(lambda x: f"R$ {x:,.2f}")
-            df_audit_fmt["2. Entry (Efetivado)"] = df_audit_fmt["2. Entry (Efetivado)"].apply(lambda x: f"R$ {x:,.2f}")
-            df_audit_fmt["3. Diferença (Budget - Entry)"] = df_audit_fmt["3. Diferença (Budget - Entry)"].apply(lambda x: f"R$ {x:,.2f}")
+            # Métricas Resumo do Mês Auditado
+            tot_b = df_budget_m.sum()
+            tot_e = df_entry_m.sum()
+            tot_dif = tot_b - tot_e
             
-            st.dataframe(aplicar_estilo_tabela(df_audit_fmt.style, subset=["3. Diferença (Budget - Entry)"]), use_container_width=True)
+            st.markdown("---")
+            ac1, ac2, ac3, ac4 = st.columns(4)
+            ac1.metric("📋 Total Budgetado", f"R$ {tot_b:,.2f}")
+            ac2.metric("💳 Total Realizado", f"R$ {tot_e:,.2f}", delta=f"{((tot_e-tot_b)/tot_b*100 if tot_b>0 else 0):+.1f}% vs Budget", delta_color="inverse")
+            ac3.metric("🎯 Saldo Orçamentário", f"R$ {tot_dif:,.2f}", delta="Sobrou / Falta", delta_color="normal")
+            ac4.metric("📊 Taxa de Execução", f"{(tot_e/tot_b*100 if tot_b>0 else 0):.1f}%")
             
-            hoje_dt = pd.to_datetime(datetime.today().date())
-            vencidas_mes = df_mes[(df_mes["Status"] == "Budget") & (df_mes["Data"] < hoje_dt)]
-            if not vencidas_mes.empty:
-                st.markdown("### ⚠️ Alerta de Contas Vencidas (Budget Pendente no Mês)")
-                df_venc_fmt = vencidas_mes[["Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
-                df_venc_fmt["Valor"] = df_venc_fmt["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-                st.dataframe(df_venc_fmt, use_container_width=True)
-            else:
-                st.success("🎉 Nenhuma despesa pendente/vencida neste mês atual!")
+            st.markdown("---")
+            st.markdown(f"### 📋 Tabela Analítica Consolidada por Categoria ({mes_audit_selecionado})")
+            
+            # Formatação para exibição
+            df_audit_fmt = df_audit_res.copy()
+            df_audit_fmt["Budget"] = df_audit_fmt["Budget"].apply(lambda x: f"R$ {x:,.2f}")
+            df_audit_fmt["Realizado (Entry)"] = df_audit_fmt["Realizado (Entry)"].apply(lambda x: f"R$ {x:,.2f}")
+            df_audit_fmt["Diferença (R$)"] = df_audit_fmt["Diferença (R$)"].apply(lambda x: f"R$ {x:,.2f}")
+            
+            st.dataframe(aplicar_estilo_tabela(df_audit_fmt.style, subset=["Diferença (R$)"]), use_container_width=True)
+            
+            # Drill-down: Ver lançamentos específicos por categoria escolhida
+            st.markdown("---")
+            st.markdown("### 🔍 Drill-Down: Inspecionar Lançamentos da Categoria")
+            cat_selecionada_drill = st.selectbox("Escolha uma categoria para abrir o detalhamento transacional:", todas_cats, key="drill_cat")
+            
+            if cat_selecionada_drill:
+                df_drill = df_mes_audit[df_mes_audit["Categoria"] == cat_selecionada_drill]
+                if not df_drill.empty:
+                    df_drill_show = df_drill[["Status", "Descricao", "Conta", "Valor", "Data", "Parcela"]].copy()
+                    df_drill_show["Valor"] = df_drill_show["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+                    st.dataframe(df_drill_show, use_container_width=True)
+                else:
+                    st.info(f"Nenhum lançamento encontrado para a categoria {cat_selecionada_drill} no período.")
         else:
-            st.info("Nenhuma despesa registrada para este mês atual.")
+            st.info(f"Nenhuma despesa registrada para o período de {mes_audit_selecionado}.")
     else:
         st.info("Nenhum lançamento cadastrado no sistema.")
+
 
 elif aba == "Financial Indicators":
     st.subheader("📈 Financial Indicators (Budget)")
