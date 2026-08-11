@@ -691,7 +691,7 @@ elif aba == "20x Master KPIs":
             ("14. Frequência de Transações", f"{len(df)} eventos", "Volume transacional"),
             ("15. Ticket Médio por Lançamento", f"R$ {df['Valor'].mean() if len(df)>0 else 0:,.2f}", "Média por transação"),
             ("16. Cobertura de Passivos", f"{(total_rec/(total_desp+1)):.2f}x", "Capacidade de pagamento"),
-            ("17. Índice de Autonomia", f"{min(100, (total_rec/(total_desp+1)*10))`%`", "Grau de independência"),
+            ("17. Índice de Autonomia", f"{min(100, (total_rec/(total_desp+1)*10)):.1f}%", "Grau de independência"),
             ("18. Grau de Endividamento", "Baixo Risco", "Métrica de endividamento"),
             ("19. Liquidez Corrente", f"{(total_rec/(total_desp+1)):.2f}", "Índice de liquidez"),
             ("20. Score Executivo Global", "A+ (Excelente)", "Avaliação geral")
