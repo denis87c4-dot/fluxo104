@@ -603,7 +603,6 @@ elif aba == "Projections & Charts":
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
 elif aba == "Monthly Audit":
-    elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
     st.markdown("Auditoria avançada de desempenho orçamentário com seleção de período, filtros, percentuais de desvio e análise de peso por categoria.")
     
@@ -613,7 +612,6 @@ elif aba == "Monthly Audit":
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        # 1. Dropdown de Seleção de Período
         meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
         mes_atual_padrao = datetime.today().strftime("%Y-%m")
         if mes_atual_padrao not in meses_disponiveis:
@@ -625,11 +623,9 @@ elif aba == "Monthly Audit":
         
         ano_aud, mes_aud = map(int, mes_audit_selecionado.split("-"))
         
-        # Filtrar dados do mês selecionado (apenas despesas para auditoria de orçamento)
         df_mes_audit = df[(df["Data"].dt.year == ano_aud) & (df["Data"].dt.month == mes_aud) & (df["Tipo"] == "Despesa")]
         
         if not df_mes_audit.empty:
-            # Filtros adicionais na barra lateral ou colunas
             with col_m2:
                 categorias_disponiveis = sorted(df_mes_audit["Categoria"].unique().tolist())
                 filtro_cat_audit = st.multiselect("Filtrar Categorias", categorias_disponiveis, default=categorias_disponiveis)
@@ -651,9 +647,8 @@ elif aba == "Monthly Audit":
             for cat in todas_cats:
                 b_val = df_budget_m.get(cat, 0.0)
                 e_val = df_entry_m.get(cat, 0.0)
-                dif_val = b_val - e_val  # Positivo = sobrou, Negativo = estourou
+                dif_val = b_val - e_val
                 
-                # Percentuais
                 perc_consumido = (e_val / b_val * 100) if b_val > 0 else (100.0 if e_val > 0 else 0.0)
                 perc_do_total = (e_val / total_geral_realizado * 100) if total_geral_realizado > 0 else 0.0
                 variacao_pct = ((e_val - b_val) / b_val * 100) if b_val > 0 else 0.0
@@ -677,7 +672,6 @@ elif aba == "Monthly Audit":
                 
             df_audit_res = pd.DataFrame(dados_audit).set_index("Categoria")
             
-            # Métricas Resumo do Mês Auditado
             tot_b = df_budget_m.sum()
             tot_e = df_entry_m.sum()
             tot_dif = tot_b - tot_e
@@ -692,7 +686,6 @@ elif aba == "Monthly Audit":
             st.markdown("---")
             st.markdown(f"### 📋 Tabela Analítica Consolidada por Categoria ({mes_audit_selecionado})")
             
-            # Formatação para exibição
             df_audit_fmt = df_audit_res.copy()
             df_audit_fmt["Budget"] = df_audit_fmt["Budget"].apply(lambda x: f"R$ {x:,.2f}")
             df_audit_fmt["Realizado (Entry)"] = df_audit_fmt["Realizado (Entry)"].apply(lambda x: f"R$ {x:,.2f}")
@@ -700,7 +693,6 @@ elif aba == "Monthly Audit":
             
             st.dataframe(aplicar_estilo_tabela(df_audit_fmt.style, subset=["Diferença (R$)"]), use_container_width=True)
             
-            # Drill-down: Ver lançamentos específicos por categoria escolhida
             st.markdown("---")
             st.markdown("### 🔍 Drill-Down: Inspecionar Lançamentos da Categoria")
             cat_selecionada_drill = st.selectbox("Escolha uma categoria para abrir o detalhamento transacional:", todas_cats, key="drill_cat")
@@ -717,7 +709,6 @@ elif aba == "Monthly Audit":
             st.info(f"Nenhuma despesa registrada para o período de {mes_audit_selecionado}.")
     else:
         st.info("Nenhum lançamento cadastrado no sistema.")
-
 
 elif aba == "Financial Indicators":
     st.subheader("📈 Financial Indicators (Budget)")
@@ -1290,5 +1281,3 @@ elif aba == "Gerenciar Categorias":
             st.success("Categoria adicionada e salva!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
-
-
