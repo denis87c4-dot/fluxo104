@@ -55,7 +55,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
     except Exception:
         return df_styled
 
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "KPIs Avançados", "Gerenciar Categorias"])
+aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -1225,62 +1225,15 @@ elif aba == "Cartões":
     else:
         st.info("Nenhum cartão ou conta cadastrado.")
 
-elif aba == "KPIs Avançados":
-    st.subheader("📊 KPIs Avançados")
-    st.markdown("Painel dividido em dois blocos: Financeiro e Estatístico.")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        # ===================== PAINEL FINANCEIRO =====================
-        st.markdown("## 💵 Painel Financeiro")
-        receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
-        despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
-        saldo_liquido = receitas - despesas
-        taxa_poupanca = (saldo_liquido / receitas * 100) if receitas > 0 else 0.0
-        comprometimento_renda = (despesas / receitas * 100) if receitas > 0 else 0.0
-        cash_ratio = (receitas / despesas) if despesas > 0 else 0.0
-        burn_rate = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: st.metric("💰 Net Savings Rate", f"{taxa_poupanca:.1f}%")
-        with col2: st.metric("🛡️ Cash Ratio", f"{cash_ratio:.2f}x")
-        with col3: st.metric("🔥 Burn Rate", f"R$ {burn_rate:,.2f}")
-        with col4: st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%")
-
-        pivot_fin = df.pivot_table(index="AnoMes", values=["Valor"], columns="Tipo", aggfunc="sum", fill_value=0.0).reset_index()
-        # Ajuste seguro de colunas caso falte Receita ou Despesa no pivot
-        if "Receita" not in pivot_fin.columns:
-            pivot_fin["Receita"] = 0.0
-        if "Despesa" not in pivot_fin.columns:
-            pivot_fin["Despesa"] = 0.0
-
-        pivot_fin["Saldo"] = pivot_fin["Receita"] - pivot_fin["Despesa"]
-        pivot_fin["TaxaPoupanca"] = (pivot_fin["Saldo"] / pivot_fin["Receita"] * 100).fillna(0.0)
-
-        st.markdown("#### Receita vs Despesa")
-        chart_rd = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f"), tooltip=['AnoMes', 'Receita']
-        ) + alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Despesa:Q", color=alt.value("#e76f51"), tooltip=['AnoMes', 'Despesa']
-        )
-        st.altair_chart(chart_rd, use_container_width=True)
-    else:
-        st.info("Nenhum lançamento registrado para calcular os KPIs Avançados.")
-
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
-    nova_cat = st.text_input("Nome da Nova Categoria")
+    nova_cat = st.text_input("Nome da Nova Categorias")
     if st.button("Adicionar Categoria"):
         if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
-            st.session_state.categorias.append(nova_cat.strip())
+            st.session_state.categorias.append(nova_cat)
             pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
-            st.success("Categoria adicionada e salva com sucesso!")
-            st.rerun()
-            
-    st.markdown("### Categorias Existentes")
+            st.success("Categoria adicionada e salva!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
+
+
