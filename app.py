@@ -711,74 +711,6 @@ elif aba == "Monthly Audit":
         st.info("Nenhum lançamento cadastrado no sistema.")
 
 elif aba == "Financial Indicators":
-    st.subheader("📈 Financial Indicators (Budget)")
-    st.markdown("Indicadores financeiros calculados mês a mês com base no planejamento (Budget).")
-    
-    df = st.session_state.lancamentos
-    if not df.empty and not df[df["Status"] == "Budget"].empty:
-        df_b = df[df["Status"] == "Budget"].copy()
-        df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
-        df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
-        
-        meses = sorted(df_b["AnoMes"].unique())
-        
-        st.markdown("### 🚀 Strategic Metrics (1 a 3)")
-        dados_avancados_3 = []
-        for m in meses:
-            df_m = df_b[df_b["AnoMes"] == m]
-            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
-            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
-            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
-            
-            net_cash_flow = income - expense
-            burn_rate = abs(net_cash_flow) if net_cash_flow < 0 else 0.0
-            burn_rate_str = f"R$ {burn_rate:,.2f} (Queima)" if burn_rate > 0 else "R$ 0,00 (Sem Queima)"
-            
-            df_ate_mes = df_b[df_b["AnoMes"] <= m]
-            patrimonio_liquido_est = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
-            
-            if burn_rate > 0:
-                runway_meses = patrimonio_liquido_est / burn_rate
-                runway_str = f"{runway_meses:.1f} meses" if runway_meses > 0 else "0.0 meses"
-            else:
-                runway_str = "Infinito (Superávit)"
-                
-            burn_runway_final = f"{burn_rate_str} | Runway: {runway_str}"
-            
-            obrigacoes_mes = debts + credit_card
-            if obrigacoes_mes > 0:
-                dscr_val = income / obrigacoes_mes
-                dscr_final = f"{dscr_val:.2f}x (Seguro > 1.2)" if dscr_val >= 1.2 else f"{dscr_val:.2f}x (⚠️ Alerta < 1.2)"
-            else:
-                dscr_final = "N/A (Sem Dívidas/Cartão)"
-                
-            df_historico_ate_mes = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
-            gastos_por_mes = df_historico_ate_mes.groupby("AnoMes")["Valor"].sum()
-            if len(gastos_por_mes) > 1:
-                media_hist = gastos_por_mes.mean()
-                desv_hist = gastos_por_mes.std()
-                cv_val = (desv_hist / media_hist) * 100 if media_hist > 0 else 0.0
-                cv_final = f"{cv_val:.1f}%"
-            else:
-                cv_final = "N/A (Requer + de 1 mês)"
-                
-            dados_avancados_3.append({
-                "Mês": m,
-                "1. Burn Rate & Runway": burn_runway_final,
-                "2. DSCR (Cobertura da Dívida)": dscr_final,
-                "3. Coeficiente de Variação (CV)": cv_final
-            })
-            
-        st.dataframe(pd.DataFrame(dados_avancados_3).set_index("Mês"), use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 🛡️ Liquidity, Savings & Risk Metrics (4 a 6)")
-        dados_avancados_4_6 = []
-        for m in meses:
-            df_m = df_b[df_b["AnoMes"] == m]
-elif aba == "Financial Indicators":
     st.subheader("📈 Financial Indicators (Budget & Efetivado)")
     st.markdown("Indicadores financeiros de nível executivo calculados mês a mês (contemplando dados Budget e Efetivados).")
     
@@ -915,7 +847,6 @@ elif aba == "Financial Indicators":
         st.dataframe(pd.DataFrame(dados_avancados_7_9).set_index("Mês"), use_container_width=True)
     else:
         st.info("Nenhum dado cadastrado para calcular os indicadores financeiros.")
-
 
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators & Advanced Econometrics")
