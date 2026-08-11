@@ -778,14 +778,85 @@ elif aba == "Financial Indicators":
         dados_avancados_4_6 = []
         for m in meses:
             df_m = df_b[df_b["AnoMes"] == m]
-            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
-            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            contas_liquidas = df_m[(df_m["Tipo"] == "Receita") & (~df_m["Conta"].isin(st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []))]["Valor"].sum()
+elif aba == "Financial Indicators":
+    st.subheader("📈 Financial Indicators (Budget & Efetivado)")
+    st.markdown("Indicadores financeiros de nível executivo calculados mês a mês (contemplando dados Budget e Efetivados).")
+    
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df_ind = df.copy()
+        df_ind["Data"] = pd.to_datetime(df_ind["Data"], errors="coerce")
+        df_ind["AnoMes"] = df_ind["Data"].dt.to_period("M").astype(str)
+        
+        meses = sorted(df_ind["AnoMes"].unique())
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        
+        st.markdown("### 🚀 Strategic Metrics (1 a 3)")
+        dados_avancados_3 = []
+        for m in meses:
+            df_m = df_ind[df_ind["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita") & (df_m["Status"] == "Efetivado")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (~df_m["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (df_m["Categoria"].str.contains("debt|dívida|financiamento", case=False, na=False))]["Valor"].sum()
+            credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
+            
+            net_cash_flow = income - expense
+            burn_rate = abs(net_cash_flow) if net_cash_flow < 0 else 0.0
+            burn_rate_str = f"R$ {burn_rate:,.2f} (Queima)" if burn_rate > 0 else "R$ 0,00 (Sem Queima)"
+            
+            df_ate_mes = df_ind[df_ind["AnoMes"] <= m]
+            patrimonio_liquido_est = df_ate_mes[(df_ate_mes["Tipo"] == "Receita") & (df_ate_mes["Status"] == "Efetivado")]["Valor"].sum() - df_ate_mes[(df_ate_mes["Tipo"] == "Despesa") & (df_ate_mes["Status"] == "Efetivado")]["Valor"].sum()
+            
+            if burn_rate > 0:
+                runway_meses = patrimonio_liquido_est / burn_rate
+                runway_str = f"{runway_meses:.1f} meses" if runway_meses > 0 else "0.0 meses"
+            else:
+                runway_str = "Infinito (Superávit)"
+                
+            burn_runway_final = f"{burn_rate_str} | Runway: {runway_str}"
+            
+            obrigacoes_mes = debts + credit_card
+            if obrigacoes_mes > 0:
+                dscr_val = income / obrigacoes_mes
+                dscr_final = f"{dscr_val:.2f}x (Seguro > 1.2)" if dscr_val >= 1.2 else f"{dscr_val:.2f}x (⚠️ Alerta < 1.2)"
+            else:
+                dscr_final = "N/A (Sem Dívidas/Cartão)"
+                
+            df_historico_ate_mes = df_ind[(df_ind["AnoMes"] <= m) & (df_ind["Tipo"] == "Despesa") & (df_ind["Status"] == "Efetivado")]
+            gastos_por_mes = df_historico_ate_mes.groupby("AnoMes")["Valor"].sum()
+            if len(gastos_por_mes) > 1:
+                media_hist = gastos_por_mes.mean()
+                desv_hist = gastos_por_mes.std()
+                cv_val = (desv_hist / media_hist) * 100 if media_hist > 0 else 0.0
+                cv_final = f"{cv_val:.1f}%"
+            else:
+                cv_final = "N/A (Requer + de 1 mês)"
+                
+            dados_avancados_3.append({
+                "Mês": m,
+                "1. Burn Rate & Runway": burn_runway_final,
+                "2. DSCR (Cobertura da Dívida)": dscr_final,
+                "3. Coeficiente de Variação (CV)": cv_final
+            })
+            
+        st.dataframe(pd.DataFrame(dados_avancados_3).set_index("Mês"), use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 🛡️ Liquidity, Savings & Risk Metrics (4 a 6)")
+        dados_avancados_4_6 = []
+        for m in meses:
+            df_m = df_ind[df_ind["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita") & (df_m["Status"] == "Efetivado")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (~df_m["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            contas_liquidas = df_m[(df_m["Tipo"] == "Receita") & (df_m["Status"] == "Efetivado") & (~df_m["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            
             cash_ratio = (contas_liquidas / expense) if expense > 0 else 0.0
             cash_ratio_str = f"{cash_ratio:.2f}x (Coberto)" if cash_ratio >= 1.0 else f"{cash_ratio:.2f}x (⚠️ Ajuste Caixa)"
+            
             net_savings = ((income - expense) / income * 100) if income > 0 else 0.0
             net_savings_str = f"{net_savings:.1f}%"
-            df_hist_exp = df_b[(df_b["AnoMes"] <= m) & (df_b["Tipo"] == "Despesa")]
+            
+            df_hist_exp = df_ind[(df_ind["AnoMes"] <= m) & (df_ind["Tipo"] == "Despesa") & (df_ind["Status"] == "Efetivado")]
             series_exp_hist = df_hist_exp.groupby("AnoMes")["Valor"].sum()
             if len(series_exp_hist) > 1:
                 media_exp = series_exp_hist.mean()
@@ -794,6 +865,7 @@ elif aba == "Financial Indicators":
                 var_str = f"R$ {var_95:,.2f}"
             else:
                 var_str = "R$ 0,00 (Histórico Insuficiente)"
+                
             dados_avancados_4_6.append({
                 "Mês": m,
                 "4. Cash Ratio (Liquidez Imediata)": cash_ratio_str,
@@ -806,29 +878,34 @@ elif aba == "Financial Indicators":
         st.markdown("### 🏛️ Advanced Financial & Leverage Metrics (7 a 9)")
         dados_avancados_7_9 = []
         for m in meses:
-            df_m = df_b[df_b["AnoMes"] == m]
-            income = df_m[(df_m["Tipo"] == "Receita")]["Valor"].sum()
-            expense = df_m[(df_m["Tipo"] == "Despesa")]["Valor"].sum()
-            juros_mes = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("juros|interest|financiamento", case=False, na=False))]["Valor"].sum()
+            df_m = df_ind[df_ind["AnoMes"] == m]
+            income = df_m[(df_m["Tipo"] == "Receita") & (df_m["Status"] == "Efetivado")]["Valor"].sum()
+            expense = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (~df_m["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            juros_mes = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (df_m["Categoria"].str.contains("juros|interest|financiamento", case=False, na=False))]["Valor"].sum()
+            
             if juros_mes > 0:
                 interest_coverage = income / juros_mes
                 interest_cov_str = f"{interest_coverage:.2f}x (Seguro > 3.0)" if interest_coverage >= 3.0 else f"{interest_coverage:.2f}x (⚠️ Alerta < 3.0)"
             else:
                 interest_cov_str = "N/A (Sem Encargos de Juros)"
-            df_ate_mes = df_b[df_b["AnoMes"] <= m]
-            ativos_totais = df_ate_mes[df_ate_mes["Tipo"] == "Receita"]["Valor"].sum() - df_ate_mes[df_ate_mes["Tipo"] == "Despesa"]["Valor"].sum()
+                
+            df_ate_mes = df_ind[df_ind["AnoMes"] <= m]
+            ativos_totais = df_ate_mes[(df_ate_mes["Tipo"] == "Receita") & (df_ate_mes["Status"] == "Efetivado")]["Valor"].sum() - df_ate_mes[(df_ate_mes["Tipo"] == "Despesa") & (df_ate_mes["Status"] == "Efetivado")]["Valor"].sum()
             net_income_mes = income - expense
+            
             if ativos_totais > 0:
                 roa_val = (net_income_mes / ativos_totais) * 100
                 roa_str = f"{roa_val:.2f}%"
             else:
                 roa_str = "0.00% (Ativos Base Zerados)"
-            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
-            cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+                
+            debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
             total_obrigacoes = debts + credit_card
+            
             dti_val = (total_obrigacoes / income * 100) if income > 0 else 0.0
             dti_str = f"{dti_val:.1f}% (⚠️ Alto > 40%)" if dti_val > 40.0 else f"{dti_val:.1f}% (Saudável <= 40%)"
+            
             dados_avancados_7_9.append({
                 "Mês": m,
                 "7. Interest Coverage (Cobertura de Juros)": interest_cov_str,
@@ -837,7 +914,8 @@ elif aba == "Financial Indicators":
             })
         st.dataframe(pd.DataFrame(dados_avancados_7_9).set_index("Mês"), use_container_width=True)
     else:
-        st.info("Nenhum dado de Budget cadastrado para calcular os indicadores financeiros.")
+        st.info("Nenhum dado cadastrado para calcular os indicadores financeiros.")
+
 
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators & Advanced Econometrics")
