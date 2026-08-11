@@ -1252,21 +1252,35 @@ elif aba == "KPIs Avançados":
         with col4: st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%")
 
         pivot_fin = df.pivot_table(index="AnoMes", values=["Valor"], columns="Tipo", aggfunc="sum", fill_value=0.0).reset_index()
+        # Ajuste seguro de colunas caso falte Receita ou Despesa no pivot
+        if "Receita" not in pivot_fin.columns:
+            pivot_fin["Receita"] = 0.0
+        if "Despesa" not in pivot_fin.columns:
+            pivot_fin["Despesa"] = 0.0
+
         pivot_fin["Saldo"] = pivot_fin["Receita"] - pivot_fin["Despesa"]
         pivot_fin["TaxaPoupanca"] = (pivot_fin["Saldo"] / pivot_fin["Receita"] * 100).fillna(0.0)
 
         st.markdown("#### Receita vs Despesa")
         chart_rd = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f")
+            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f"), tooltip=['AnoMes', 'Receita']
         ) + alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Despesa:Q", color=alt.value("#e76f51"), tooltip=['AnoMes', 'Despesa']
+        )
+        st.altair_chart(chart_rd, use_container_width=True)
+    else:
+        st.info("Nenhum lançamento registrado para calcular os KPIs Avançados.")
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
-    nova_cat = st.text_input("Nome da Nova Categorias")
+    nova_cat = st.text_input("Nome da Nova Categoria")
     if st.button("Adicionar Categoria"):
         if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
-            st.session_state.categorias.append(nova_cat)
+            st.session_state.categorias.append(nova_cat.strip())
             pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
-            st.success("Categoria adicionada e salva!")
+            st.success("Categoria adicionada e salva com sucesso!")
+            st.rerun()
+            
+    st.markdown("### Categorias Existentes")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
