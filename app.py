@@ -32,6 +32,68 @@ if os.path.exists(ARQUIVO_CARTOES):
     st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
 else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
+# ==================== FUNÇÕES DE BACKUP ====================
+def salvar_backup():
+    try:
+        st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+        st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+        st.success("💾 Backup realizado com sucesso!")
+    except Exception as e:
+        st.error(f"Erro ao salvar backup: {e}")
+
+def salvar_backup_automatico():
+    try:
+        st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+        st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+    except:
+        pass  # silencioso
+
+# Dispara backup automático sempre que o app roda
+salvar_backup_automatico()
+
+# ==================== FUNÇÃO DE ESTILO ====================
+def colorir_negativos(val):
+    if isinstance(val, str) and "R$" in val:
+        try:
+            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").replace("%", "").strip()
+            val_num = float(limpo)
+            if val_num < 0:
+                return 'color: #ff4b4b; font-weight: bold;'
+        except:
+            pass
+    elif isinstance(val, (int, float)) and val < 0:
+        return 'color: #ff4b4b; font-weight: bold;'
+    return ''
+
+def aplicar_estilo_tabela(df_styled, subset=None):
+    try:
+        if hasattr(df_styled, "map"):
+            return df_styled.map(colorir_negativos, subset=subset)
+        else:
+            return df_styled.applymap(colorir_negativos, subset=subset)
+    except Exception:
+        return df_styled
+
+# ==================== NAVEGAÇÃO ====================
+aba = st.sidebar.radio("Navegação", [
+    "Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit",
+    "Financial Indicators", "Statistical Indicators", "Cadastro (Form)",
+    "Lançamentos", "Cartões", "Gerenciar Categorias"
+])
+
+# ==================== BOTÕES DE BACKUP ====================
+st.sidebar.markdown("### 🔐 Central de Backup")
+if st.sidebar.button("💾 Salvar Backup Manual"):
+    salvar_backup()
+
+if aba == "Lançamentos":
+    st.subheader("📑 Registro de Lançamentos")
+    st.markdown("Gerencie seus lançamentos e faça backup manual sempre que desejar.")
+    
+    if st.button("💾 Salvar Backup Agora"):
+        salvar_backup()
 
 def colorir_negativos(val):
     if isinstance(val, str) and "R$" in val:
