@@ -5,6 +5,51 @@ import os
 import altair as alt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+import altair as alt
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
+st.title("💰 Fluxo104 - Gestão Financeira Executiva")
+st.markdown("Acompanhamento financeiro corporativo em tempo real com salvamento automático e inteligência preditiva.")
+
+# ==================== CONEXÃO E CARREGAMENTO (GOOGLE SHEETS) ====================
+conn = st.connection("gsheets", type="gsheets")
+
+# 1. Carregar Lançamentos
+try:
+    st.session_state.lancamentos = conn.read(worksheet="lancamentos", ttl=0)
+    if st.session_state.lancamentos.empty or "Tipo" not in st.session_state.lancamentos.columns:
+        st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
+    else:
+        if "ContaDestino" not in st.session_state.lancamentos.columns:
+            st.session_state.lancamentos["ContaDestino"] = ""
+except Exception:
+    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
+
+# 2. Carregar Categorias
+try:
+    df_cat = conn.read(worksheet="categorias", ttl=0)
+    if not df_cat.empty and "Categoria" in df_cat.columns:
+        st.session_state.categorias = df_cat["Categoria"].tolist()
+    else:
+        st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Transferência", "Outros"]
+except Exception:
+    st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Transferência", "Outros"]
+
+# 3. Carregar Cartões / Contas
+try:
+    df_cartoes = conn.read(worksheet="cartoes", ttl=0)
+    if not df_cartoes.empty:
+        st.session_state.cartoes = df_cartoes
+    else:
+        st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
+except Exception:
+    st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira Executiva")
