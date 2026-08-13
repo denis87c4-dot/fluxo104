@@ -32,6 +32,7 @@ if os.path.exists(ARQUIVO_CARTOES):
     st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
 else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
+
 # ==================== FUNÇÕES DE BACKUP ====================
 def salvar_backup():
     try:
@@ -83,41 +84,12 @@ aba = st.sidebar.radio("Navegação", [
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
-# ==================== BOTÕES DE BACKUP ====================
+# ==================== BOTÕES DE BACKUP NA SIDEBAR ====================
 st.sidebar.markdown("### 🔐 Central de Backup")
 if st.sidebar.button("💾 Salvar Backup Manual"):
     salvar_backup()
 
-if aba == "Lançamentos":
-    st.subheader("📑 Registro de Lançamentos")
-    st.markdown("Gerencie seus lançamentos e faça backup manual sempre que desejar.")
-    
-    if st.button("💾 Salvar Backup Agora"):
-        salvar_backup()
-
-def colorir_negativos(val):
-    if isinstance(val, str) and "R$" in val:
-        try:
-            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").replace("%", "").strip()
-            val_num = float(limpo)
-            if val_num < 0:
-                return 'color: #ff4b4b; font-weight: bold;'
-        except:
-            pass
-    elif isinstance(val, (int, float)) and val < 0:
-        return 'color: #ff4b4b; font-weight: bold;'
-    return ''
-
-def aplicar_estilo_tabela(df_styled, subset=None):
-    try:
-        if hasattr(df_styled, "map"):
-            return df_styled.map(colorir_negativos, subset=subset)
-        else:
-            return df_styled.applymap(colorir_negativos, subset=subset)
-    except Exception:
-        return df_styled
-
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit", "Financial Indicators", "Statistical Indicators", "Cadastro (Form)", "Lançamentos", "Cartões", "Gerenciar Categorias"])
+# ==================== BLOCOS DAS ABAS ====================
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -269,7 +241,6 @@ if aba == "Dashboard":
         st.dataframe(aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]), use_container_width=True)
         
         st.markdown("---")
-        
         st.markdown("### 📈 Gráficos Comparativos de Evolução")
         
         col_g1, col_g2 = st.columns(2)
@@ -1160,7 +1131,7 @@ elif aba == "Cadastro (Form)":
 
             df_novo = pd.DataFrame(novos_registros)
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, df_novo], ignore_index=True)
-            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+            salvar_backup()
             
             if tipo != "Transferência" and cartao_selecionado_row is not None:
                 nome_c_alvo = cartao_selecionado_row["Nome"]
@@ -1185,6 +1156,9 @@ elif aba == "Lançamentos":
     st.subheader("Lista de Lançamentos & Smart Search (Gerenciamento)")
     st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente e gerenciar cada registro (Editar ou Deletar).")
     
+    if st.button("💾 Salvar Backup Agora"):
+        salvar_backup()
+        
     df = st.session_state.lancamentos
     if not df.empty:
         col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
@@ -1230,7 +1204,7 @@ elif aba == "Lançamentos":
                     with col_btn1:
                         if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
                             st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
-                            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                            salvar_backup()
                             st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
                             st.success("Lançamento deletado com sucesso!")
                             st.rerun()
@@ -1281,7 +1255,7 @@ elif aba == "Lançamentos":
                                 st.session_state.lancamentos.loc[idx, "Valor"] = float(novo_valor)
                                 st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
                                 
-                                st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+                                salvar_backup()
                                 st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
                                 
                                 st.session_state[edit_key] = False
@@ -1293,7 +1267,7 @@ elif aba == "Lançamentos":
         st.markdown("---")
         if st.button("🗑️ Limpar Todos os Lançamentos"):
             st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
-            st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+            salvar_backup()
             st.rerun()
     else:
         st.write("Nenhum registro encontrado.")
@@ -1317,7 +1291,7 @@ elif aba == "Cartões":
                     "Vencimento": int(dia_pagamento)
                 }])
                 st.session_state.cartoes = pd.concat([st.session_state.cartoes, novo_cartao], ignore_index=True)
-                st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+                salvar_backup()
                 st.success("Cartão salvo com sucesso!")
                 st.rerun()
 
@@ -1336,7 +1310,7 @@ elif aba == "Cartões":
                     st.error(f"Não é possível excluir '{row['Nome']}': existem lançamentos vinculados a esta conta.")
                 else:
                     st.session_state.cartoes = st.session_state.cartoes.drop(idx).reset_index(drop=True)
-                    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+                    salvar_backup()
                     st.success(f"Cartão '{row['Nome']}' removido com sucesso!")
                     st.rerun()
     else:
@@ -1344,11 +1318,11 @@ elif aba == "Cartões":
 
 elif aba == "Gerenciar Categorias":
     st.subheader("📂 Gerenciamento de Categorias")
-    nova_cat = st.text_input("Nome da Nova Categorias")
+    nova_cat = st.text_input("Nome da Nova Categoria")
     if st.button("Adicionar Categoria"):
         if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
             st.session_state.categorias.append(nova_cat)
-            pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+            salvar_backup()
             st.success("Categoria adicionada e salva!")
     for cat in st.session_state.categorias:
         st.write(f"- {cat}")
