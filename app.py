@@ -45,16 +45,7 @@ def colorir_negativos(val):
     elif isinstance(val, (int, float)) and val < 0:
         return 'color: #ff4b4b; font-weight: bold;'
     return ''
-# ==================== FUNÇÕES DE BACKUP ====================
-def salvar_backup():
-    ...
-def salvar_backup_automatico():
-    ...
-salvar_backup_automatico()
 
-# ==================== BOTÕES DE BACKUP ====================
-st.sidebar.markdown("### 🔐 Central de Backup")
-...
 def aplicar_estilo_tabela(df_styled, subset=None):
     try:
         if hasattr(df_styled, "map"):
