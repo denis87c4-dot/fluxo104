@@ -84,10 +84,50 @@ aba = st.sidebar.radio("Navegação", [
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
-# ==================== BOTÕES DE BACKUP NA SIDEBAR ====================
-st.sidebar.markdown("### 🔐 Central de Backup")
-if st.sidebar.button("💾 Salvar Backup Manual"):
+import io
+import zipfile
+
+# ==================== CENTRAL DE BACKUP ROBUSTA ====================
+st.sidebar.markdown("### 🔐 Central de Backup & Segurança")
+
+# 1. Botão de Backup Manual Existente
+if st.sidebar.button("💾 Salvar Backup Local"):
     salvar_backup()
+
+# 2. Funcionalidade de Download de Backup (ZIP com todos os CSVs)
+arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
+arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
+
+if arquivos_existentes:
+    # Cria um arquivo ZIP em memória
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for arq in arquivos_existentes:
+            zip_file.write(arq)
+    zip_buffer.seek(0)
+    
+    st.sidebar.download_button(
+        label="📥 Baixar Backup Completo (.zip)",
+        data=zip_buffer,
+        file_name=f"backup_fluxo104_{datetime.today().strftime('%Y-%m-%d')}.zip",
+        mime="application/zip",
+        help="Baixe seus arquivos CSV salvos para o seu computador."
+    )
+
+# 3. Funcionalidade de Upload / Restauração de Backup
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### 🔄 Restaurar Backup")
+arquivo_upload = st.sidebar.file_uploader("Envie seu arquivo ZIP de backup", type="zip")
+
+if arquivo_upload is not None:
+    try:
+        with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
+            zip_ref.extractall(".")
+        st.sidebar.success("✅ Dados restaurados com sucesso! Recarregue a página.")
+        if st.sidebar.button("🔄 Recarregar App"):
+            st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"Erro ao restaurar arquivo: {e}")
 
 # ==================== BLOCOS DAS ABAS ====================
 
