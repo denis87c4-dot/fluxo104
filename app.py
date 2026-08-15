@@ -1300,29 +1300,46 @@ elif aba == "Cartões":
         for idx, row in st.session_state.cartoes.iterrows():
             col1, col2 = st.columns([3, 1])
             col1.write(f"**{row['Nome']}** | Fechamento: dia {row['Fechamento']} | Vencimento: dia {row['Vencimento']} | Limite: R$ {row['Limite']:,.2f}")
-            
-            tem_lancamento = False
-            if not st.session_state.lancamentos.empty and "Conta" in st.session_state.lancamentos.columns:
-                tem_lancamento = (st.session_state.lancamentos['Conta'] == row['Nome']).any()
-            
-            if col2.button("🗑️ Excluir", key=f"del_cartao_{idx}"):
-                if tem_lancamento:
-                    st.error(f"Não é possível excluir '{row['Nome']}': existem lançamentos vinculados a esta conta.")
-                else:
-                    st.session_state.cartoes = st.session_state.cartoes.drop(idx).reset_index(drop=True)
-                    salvar_backup()
-                    st.success(f"Cartão '{row['Nome']}' removido com sucesso!")
-                    st.rerun()
+            if col2.button("🗑️ Deletar", key=f"del_cartao_{idx}"):
+                st.session_state.cartoes = st.session_state.cartoes.drop(idx).reset_index(drop=True)
+                salvar_backup()
+                st.success("Cartão deletado com sucesso!")
+                st.rerun()
     else:
-        st.info("Nenhum cartão ou conta cadastrado.")
+        st.info("Nenhum cartão cadastrado.")
 
 elif aba == "Gerenciar Categorias":
-    st.subheader("📂 Gerenciamento de Categorias")
-    nova_cat = st.text_input("Nome da Nova Categoria")
-    if st.button("Adicionar Categoria"):
-        if nova_cat.strip() != "" and nova_cat not in st.session_state.categorias:
-            st.session_state.categorias.append(nova_cat)
-            salvar_backup()
-            st.success("Categoria adicionada e salva!")
-    for cat in st.session_state.categorias:
-        st.write(f"- {cat}")
+    st.subheader("🏷️ Gerenciar Categorias")
+    st.markdown("Adicione ou remova categorias do sistema de forma rápida.")
+    
+    with st.form("form_nova_categoria"):
+        nova_categoria = st.text_input("Nova Categoria", placeholder="Ex: Investimentos, Educação...")
+        btn_add_cat = st.form_submit_button("Adicionar Categoria")
+        if btn_add_cat:
+            if nova_categoria.strip() != "":
+                cat_limpa = nova_categoria.strip()
+                if cat_limpa not in st.session_state.categorias:
+                    st.session_state.categorias.append(cat_limpa)
+                    pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+                    salvar_backup()
+                    st.success(f"Categoria '{cat_limpa}' adicionada com sucesso!")
+                    st.rerun()
+                else:
+                    st.warning("Esta categoria já existe.")
+            else:
+                st.warning("Digite um nome válido para a categoria.")
+                
+    st.markdown("### 📑 Categorias Atuais")
+    if st.session_state.categorias:
+        for idx, cat in enumerate(st.session_state.categorias):
+            c1, c2 = st.columns([3, 1])
+            c1.write(f"• **{cat}**")
+            if c2.button("🗑️ Excluir", key=f"del_cat_{idx}"):
+                if len(st.session_state.categorias) > 1:
+                    st.session_state.categorias.pop(idx)
+                    pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+                    salvar_backup()
+                    st.success("Categoria removida com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Você precisa manter pelo menos uma categoria.")
