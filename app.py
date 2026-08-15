@@ -257,15 +257,42 @@ if aba == "Dashboard":
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
     
+        st.markdown("---")
+    st.markdown("### 🗓️ Histórico Consolidado por Mês")
+    st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
+    
     if not df.empty:
         df_hist = df.copy()
         cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         
-        df_hist["Expense_CC"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
-        df_hist["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist and r["Status"] == "Budget" else 0.0, axis=1)
-        df_hist["Income_Val"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+        # =========================================================================
+        # FILTRO INTELIGENTE ANTI-DUPLICIDADE (Budget vs Efetivado por Categoria/Mês)
+        # =========================================================================
+        def filtrar_duplicidade_budget(df_input):
+            if df_input.empty:
+                return df_input
+            
+            registros_validados = []
+            # Agrupa por Mês, Tipo e Categoria
+            for _, grupo in df_input.groupby(["AnoMes", "Tipo", "Categoria"]):
+                # Se houver registro Budget para esta categoria no mês, mantém apenas o Budget
+                if (grupo["Status"] == "Budget").any():
+                    g_filtrado = grupo[grupo["Status"] == "Budget"]
+                else:
+                    # Caso contrário, mantém o Efetivado (ou outros status)
+                    g_filtrado = grupo[grupo["Status"] == "Efetivado"]
+                registros_validados.append(g_filtrado)
+                
+            return pd.concat(registros_validados, ignore_index=True) if registros_validados else df_input
+
+        # Aplica o filtro inteligente no dataframe do histórico
+        df_hist_filtrado = filtrar_duplicidade_budget(df_hist)
         
-        pivot_hist = df_hist.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC", "Expense_Card"], aggfunc="sum", fill_value=0.0).reset_index()
+        df_hist_filtrado["Expense_CC"] = df_hist_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
+        df_hist_filtrado["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist and r["Status"] == "Budget" else 0.0, axis=1)
+        df_hist_filtrado["Income_Val"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+        
+        pivot_hist = df_hist_filtrado.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC", "Expense_Card"], aggfunc="sum", fill_value=0.0).reset_index()
         pivot_hist = pivot_hist.rename(columns={"AnoMes": "Mês", "Income_Val": "Income", "Expense_CC": "Expense (C/C)", "Expense_Card": "Passivo Cartão"})
         pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
         
@@ -279,7 +306,7 @@ if aba == "Dashboard":
             pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
             
         st.dataframe(aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]), use_container_width=True)
-        
+
         st.markdown("---")
         st.markdown("### 📈 Gráficos Comparativos de Evolução")
         
