@@ -5,6 +5,8 @@ import os
 import altair as alt
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import io
+import zipfile
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira Executiva")
@@ -84,22 +86,16 @@ aba = st.sidebar.radio("Navegação", [
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
-import io
-import zipfile
-
 # ==================== CENTRAL DE BACKUP ROBUSTA ====================
 st.sidebar.markdown("### 🔐 Central de Backup & Segurança")
 
-# 1. Botão de Backup Manual Existente
 if st.sidebar.button("💾 Salvar Backup Local"):
     salvar_backup()
 
-# 2. Funcionalidade de Download de Backup (ZIP com todos os CSVs)
 arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
 arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
 
 if arquivos_existentes:
-    # Cria um arquivo ZIP em memória
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for arq in arquivos_existentes:
@@ -114,7 +110,6 @@ if arquivos_existentes:
         help="Baixe seus arquivos CSV salvos para o seu computador."
     )
 
-# 3. Funcionalidade de Upload / Restauração de Backup
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 🔄 Restaurar Backup")
 arquivo_upload = st.sidebar.file_uploader("Envie seu arquivo ZIP de backup", type="zip")
@@ -253,11 +248,6 @@ if aba == "Dashboard":
         st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
 
     st.markdown("---")
-
-    st.markdown("### 🗓️ Histórico Consolidado por Mês")
-    st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
-    
-        st.markdown("---")
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
     
@@ -265,27 +255,20 @@ if aba == "Dashboard":
         df_hist = df.copy()
         cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         
-        # =========================================================================
-        # FILTRO INTELIGENTE ANTI-DUPLICIDADE (Budget vs Efetivado por Categoria/Mês)
-        # =========================================================================
         def filtrar_duplicidade_budget(df_input):
             if df_input.empty:
                 return df_input
             
             registros_validados = []
-            # Agrupa por Mês, Tipo e Categoria
             for _, grupo in df_input.groupby(["AnoMes", "Tipo", "Categoria"]):
-                # Se houver registro Budget para esta categoria no mês, mantém apenas o Budget
                 if (grupo["Status"] == "Budget").any():
                     g_filtrado = grupo[grupo["Status"] == "Budget"]
                 else:
-                    # Caso contrário, mantém o Efetivado (ou outros status)
                     g_filtrado = grupo[grupo["Status"] == "Efetivado"]
                 registros_validados.append(g_filtrado)
                 
             return pd.concat(registros_validados, ignore_index=True) if registros_validados else df_input
 
-        # Aplica o filtro inteligente no dataframe do histórico
         df_hist_filtrado = filtrar_duplicidade_budget(df_hist)
         
         df_hist_filtrado["Expense_CC"] = df_hist_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
@@ -475,7 +458,6 @@ elif aba == "Projections & Charts":
         st.altair_chart(chart_runway, use_container_width=True)
 
         st.markdown("---")
-
         st.markdown("### 2️⃣ Projeção de Despesas com Banda de Confiança Estatística")
         if len(pivot_graf) >= 2:
             x_vals = np.arange(len(pivot_graf))
@@ -507,7 +489,6 @@ elif aba == "Projections & Charts":
             st.info("Dados insuficientes para gerar a banda de confiança.")
 
         st.markdown("---")
-
         st.markdown("### 3️⃣ Simulação de Atingimento de Meta de Patrimônio (Crescimento Composto)")
         taxa_juros_anual = st.slider("Taxa de Retorno Anual Estimada dos Investimentos (% a.a.)", min_value=0.0, max_value=20.0, value=8.0, step=0.5)
         taxa_mensal = (1 + (taxa_juros_anual / 100.0))**(1/12) - 1
@@ -534,7 +515,6 @@ elif aba == "Projections & Charts":
         st.altair_chart(chart_patr, use_container_width=True)
 
         st.markdown("---")
-
         st.markdown("### 4️⃣ Gráfico de Tendência de Queima de Caixa (Burn Rate Velocity)")
         pivot_graf["Variacao_Despesa"] = pivot_graf["Despesa"].diff().fillna(0.0)
         chart_burn = alt.Chart(pivot_graf).mark_bar().encode(
@@ -550,7 +530,6 @@ elif aba == "Projections & Charts":
         st.altair_chart(chart_burn, use_container_width=True)
 
         st.markdown("---")
-
         st.markdown("### 5️⃣ Curva ABC de Gastos (Foco em Categorias de Maior Impacto)")
         df_despesas_totais = df[df["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
         if not df_despesas_totais.empty:
@@ -566,7 +545,6 @@ elif aba == "Projections & Charts":
             st.info("Sem despesas suficientes para calcular a Curva ABC.")
 
         st.markdown("---")
-
         st.markdown("### 6️⃣ Equilíbrio Estrutural (Custo Fixo vs Renda)")
         if "Categoria" in df.columns:
             df_fixo = df[(df["Tipo"] == "Despesa") & (df["Categoria"].str.contains("Moradia|Aluguel|Fixa|Conta|Dívida", case=False, na=False))].groupby("AnoMes")["Valor"].sum().reset_index()
@@ -585,7 +563,6 @@ elif aba == "Projections & Charts":
             st.info("Dados insuficientes para alavancagem operacional.")
 
         st.markdown("---")
-
         st.markdown("### 7️⃣ Projeção para Independência Financeira (Milestones)")
         meta_patrimonio_indep = st.number_input("Defina sua Meta de Patrimônio para Independência (R$)", value=500000.0, step=50000.0)
         
@@ -603,7 +580,6 @@ elif aba == "Projections & Charts":
         st.altair_chart(chart_milestone, use_container_width=True)
 
         st.markdown("---")
-
         st.markdown("### 8️⃣ Mapa de Calor de Sazonalidade de Despesas")
         df_heatmap = df[df["Tipo"] == "Despesa"].copy()
         if not df_heatmap.empty:
@@ -623,7 +599,6 @@ elif aba == "Projections & Charts":
             st.info("Dados insuficientes para gerar o mapa de calor.")
 
         st.markdown("---")
-
         st.markdown("### 9️⃣ Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)")
         st.markdown("Simula 100 trajetórias estocásticas de caixa baseadas no desvio padrão histórico para avaliar o risco de saldo negativo.")
         if len(pivot_graf) >= 2:
@@ -650,7 +625,6 @@ elif aba == "Projections & Charts":
             st.info("Dados insuficientes para rodar a Simulação de Monte Carlo.")
 
         st.markdown("---")
-
         st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
         if len(pivot_graf) > 0:
             df_res = pivot_graf.copy()
@@ -671,7 +645,6 @@ elif aba == "Projections & Charts":
             st.info("Dados insuficientes para calcular a resiliência.")
 
         st.markdown("---")
-
         st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
         df_scatter = df[df["Tipo"] == "Despesa"].copy()
         if not df_scatter.empty:
@@ -687,7 +660,6 @@ elif aba == "Projections & Charts":
             st.info("Nenhuma despesa para exibir no gráfico de dispersão.")
 
         st.markdown("---")
-
         st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
         taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
         taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
