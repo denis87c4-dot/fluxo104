@@ -251,44 +251,101 @@ if aba == "Dashboard":
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
     
-    if not df.empty:
-        df_hist = df.copy()
-        cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-        
-        def filtrar_duplicidade_budget(df_input):
-            if df_input.empty:
-                return df_input
-            
-            registros_validados = []
-            for _, grupo in df_input.groupby(["AnoMes", "Tipo", "Categoria"]):
-                if (grupo["Status"] == "Budget").any():
-                    g_filtrado = grupo[grupo["Status"] == "Budget"]
-                else:
-                    g_filtrado = grupo[grupo["Status"] == "Efetivado"]
-                registros_validados.append(g_filtrado)
-                
-            return pd.concat(registros_validados, ignore_index=True) if registros_validados else df_input
+    # ==================== HISTÓRICO CONSOLIDADO COM FILTRO DE STATUS ====================
 
-        df_hist_filtrado = filtrar_duplicidade_budget(df_hist)
-        
-        df_hist_filtrado["Expense_CC"] = df_hist_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1)
-        df_hist_filtrado["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist and r["Status"] == "Budget" else 0.0, axis=1)
-        df_hist_filtrado["Income_Val"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
-        
-        pivot_hist = df_hist_filtrado.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC", "Expense_Card"], aggfunc="sum", fill_value=0.0).reset_index()
-        pivot_hist = pivot_hist.rename(columns={"AnoMes": "Mês", "Income_Val": "Income", "Expense_CC": "Expense (C/C)", "Expense_Card": "Passivo Cartão"})
-        pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
-        
-        pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
-        pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
-        
-        pivot_hist = pivot_hist[["Mês", "Income", "Expense (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]]
-        
-        pivot_hist_fmt = pivot_hist.copy()
-        for col in ["Income", "Expense (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
-            pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-            
-        st.dataframe(aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]), use_container_width=True)
+st.markdown("---")
+st.markdown("### 🗓️ Histórico Consolidado por Mês")
+st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
+
+if not df.empty:
+    # 🔽 NOVO: Caixa de seleção para Status
+    status_opcoes = ["Todos", "Efetivado", "Budget"]
+    status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+
+    df_hist = df.copy()
+    cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+    # 🔽 Aplicar filtro de Status
+    if status_selecionado != "Todos":
+        df_hist = df_hist[df_hist["Status"] == status_selecionado]
+
+    # 🔽 Calcular colunas derivadas
+    df_hist["Expense_CC"] = df_hist.apply(
+        lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1
+    )
+    df_hist["Expense_Card"] = df_hist.apply(
+        lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist else 0.0, axis=1
+    )
+    df_hist["Income_Val"] = df_hist.apply(
+        lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1
+    )
+
+    # 🔽 Pivot consolidado
+    pivot_hist = df_hist.pivot_table(
+        index="AnoMes",
+        values=["Income_Val", "Expense_CC", "Expense_Card"],
+        aggfunc="sum",
+        fill_value=0.0
+    ).reset_index()
+
+    pivot_hist = pivot_hist.rename(columns={
+        "AnoMes": "Mês",
+        "Income_Val": "Income",
+        "Expense_CC": "Expense (C/C)",
+        "Expense_Card": "Passivo Cartão"
+    })
+
+    pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
+    pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
+    pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
+
+    # 🔽 Formatação
+    pivot_hist_fmt = pivot_hist.copy()
+    for col in ["Income", "Expense (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
+        pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+
+    st.dataframe(
+        aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]),
+        use_container_width=True
+    )
+
+    st.markdown("---")
+    st.markdown("### 📈 Gráficos Comparativos de Evolução")
+
+    # 🔽 Gráfico Income vs Expense vs Cartão
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        df_melt_ie = pivot_hist.melt(
+            id_vars="Mês",
+            value_vars=["Income", "Expense (C/C)", "Passivo Cartão"],
+            var_name="Métrica",
+            value_name="Valor"
+        )
+        chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X('Mês:N', title='Mês'),
+            y=alt.Y('Valor:Q', title='Montante (R$)'),
+            color=alt.Color('Métrica:N', title='Legenda'),
+            tooltip=['Mês', 'Métrica', 'Valor']
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_ie, use_container_width=True)
+
+    # 🔽 Gráfico Cash Flow vs Acumulado
+    with col_g2:
+        df_melt_ca = pivot_hist.melt(
+            id_vars="Mês",
+            value_vars=["Cash Flow", "Acumulado"],
+            var_name="Métrica",
+            value_name="Valor"
+        )
+        chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X('Mês:N', title='Mês'),
+            y=alt.Y('Valor:Q', title='Montante (R$)'),
+            color=alt.Color('Métrica:N', title='Legenda'),
+            tooltip=['Mês', 'Métrica', 'Valor']
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_ca, use_container_width=True)
+else:
+    st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
         st.markdown("---")
         st.markdown("### 📈 Gráficos Comparativos de Evolução")
