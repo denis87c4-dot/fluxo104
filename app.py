@@ -846,25 +846,138 @@ elif aba == "Financial Indicators":
         chart_evol2 = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
             x="AnoMes:N", y="Despesa:Q", color=alt.value("#e76f51")
         )
-        chart_evol3 = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Saldo:Q", color=alt.value("#264653")
+elif aba == "Financial Indicators":
+    st.subheader("💹 Financial Indicators")
+    st.markdown("Indicadores financeiros avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
+
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+        # Filtro de Tipo
+        tipo_opcoes = ["Todos", "Receita", "Despesa"]
+        tipo_selecionado = st.selectbox("📌 Filtrar por Tipo", tipo_opcoes, index=0)
+        if tipo_selecionado != "Todos":
+            df = df[df["Tipo"] == tipo_selecionado]
+
+        # Filtro de Status
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+        if status_selecionado != "Todos":
+            df = df[df["Status"] == status_selecionado]
+
+        # Filtro de Período (Mensal, Trimestral, Quadrimestral)
+        periodo_opcoes = ["Mensal", "Trimestral", "Quadrimestral"]
+        periodo_selecionado = st.selectbox("📅 Selecionar Período", periodo_opcoes, index=0)
+
+        if periodo_selecionado == "Mensal":
+            df["Periodo"] = df["Data"].dt.to_period("M").astype(str)
+        elif periodo_selecionado == "Trimestral":
+            df["Periodo"] = df["Data"].dt.to_period("Q").astype(str)
+        elif periodo_selecionado == "Quadrimestral":
+            df["Quadrimestre"] = ((df["Data"].dt.month - 1) // 4 + 1).astype(str)
+            df["Periodo"] = df["Data"].dt.year.astype(str) + "-Qd" + df["Quadrimestre"]
+
+        # ==================== PARÂMETROS FINANCEIROS ====================
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        df["Expense_CC"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
+        df["Expense_Card"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
+        df["Income_Val"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+
+        pivot_fin = df.pivot_table(
+            index="Periodo",
+            values=["Income_Val", "Expense_CC", "Expense_Card"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        pivot_fin = pivot_fin.rename(columns={
+            "Income_Val": "Receita",
+            "Expense_CC": "Despesa (C/C)",
+            "Expense_Card": "Passivo Cartão"
+        })
+
+        pivot_fin["Cash Flow"] = pivot_fin["Receita"] - pivot_fin["Despesa (C/C)"]
+        pivot_fin["Acumulado"] = pivot_fin["Cash Flow"].cumsum()
+
+        # Indicadores derivados
+        pivot_fin["Taxa Poupança (%)"] = ((pivot_fin["Receita"] - pivot_fin["Despesa (C/C)"]) / pivot_fin["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+        pivot_fin["Comp. Renda (%)"] = (pivot_fin["Despesa (C/C)"] / pivot_fin["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+        pivot_fin["Burn Rate"] = pivot_fin["Cash Flow"].apply(lambda x: abs(x) if x < 0 else 0)
+        pivot_fin["Margem (%)"] = (pivot_fin["Cash Flow"] / pivot_fin["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+
+        # ==================== TABELA ====================
+        pivot_fmt = pivot_fin.copy()
+        for col in ["Receita", "Despesa (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado", "Burn Rate"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+        for col in ["Taxa Poupança (%)", "Comp. Renda (%)", "Margem (%)"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"{x:.1f}%")
+
+        st.dataframe(
+            aplicar_estilo_tabela(pivot_fmt.set_index("Periodo").style, subset=["Cash Flow", "Acumulado"]),
+            use_container_width=True
         )
-        st.altair_chart(chart_evol + chart_evol2 + chart_evol3, use_container_width=True)
 
-        chart_endiv = alt.Chart(df_evol).mark_bar(color="#f4a261").encode(
-            x="AnoMes:N", y="Despesa:Q", tooltip=["AnoMes","Despesa"]
-        ).properties(title="Endividamento Relativo (Cartões)")
-        st.altair_chart(chart_endiv, use_container_width=True)
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Avançados")
 
-        chart_burn = alt.Chart(df_evol).mark_bar().encode(
-            x="AnoMes:N", y="Saldo:Q",
-            color=alt.condition(alt.datum.Saldo < 0, alt.value("#e76f51"), alt.value("#2a9d8f")),
-            tooltip=["AnoMes","Saldo"]
-        ).properties(title="Burn Rate Mensal")
+        # Receita vs Despesa vs Cartão
+        df_melt_ie = pivot_fin.melt(id_vars="Periodo", value_vars=["Receita", "Despesa (C/C)", "Passivo Cartão"], var_name="Métrica", value_name="Valor")
+        chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Valor:Q", title="Montante (R$)"),
+            color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Receita", "Despesa (C/C)", "Passivo Cartão"], range=["#2a9d8f", "#e76f51", "#f4a261"])),
+            tooltip=["Periodo", "Métrica", "Valor"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_ie, use_container_width=True)
+
+        # Cash Flow vs Acumulado
+        df_melt_ca = pivot_fin.melt(id_vars="Periodo", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
+        chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Valor:Q", title="Montante (R$)"),
+            color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Cash Flow", "Acumulado"], range=["#264653", "#2a9d8f"])),
+            tooltip=["Periodo", "Métrica", "Valor"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_ca, use_container_width=True)
+
+        # Taxa de Poupança
+        chart_tp = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Taxa Poupança (%):Q", title="Taxa de Poupança (%)"),
+            tooltip=["Periodo", "Taxa Poupança (%)"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_tp, use_container_width=True)
+
+        # Comprometimento da Renda
+        chart_cr = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3, color="#e76f51").encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Comp. Renda (%):Q", title="Comprometimento da Renda (%)"),
+            tooltip=["Periodo", "Comp. Renda (%)"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_cr, use_container_width=True)
+
+        # Burn Rate
+        chart_burn = alt.Chart(pivot_fin).mark_bar(color="#e76f51").encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Burn Rate:Q", title="Burn Rate (R$)"),
+            tooltip=["Periodo", "Burn Rate"]
+        ).properties(height=350).interactive()
         st.altair_chart(chart_burn, use_container_width=True)
 
+        # Margem (%)
+        chart_margin = alt.Chart(pivot_fin).mark_line(point=True, strokeWidth=3, color="#f4a261").encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Margem (%):Q", title="Margem (%)"),
+            tooltip=["Periodo", "Margem (%)"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_margin, use_container_width=True)
+
     else:
-        st.info("Nenhum dado disponível para análise financeira.")
+        st.info("Nenhum lançamento cadastrado para análise financeira.")
 
 elif aba == "Statistical Indicators 2":
     st.subheader("📊 Statistical Indicators 2")
