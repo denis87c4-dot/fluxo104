@@ -944,20 +944,127 @@ elif aba == "Statistical Indicators 2":
             color=alt.Color("Tipo:N", title="Tipo de Lançamento"),
             tooltip=["AnoMes", "Valor", "Tipo", "Categoria"]
         ).properties(height=350).interactive()
-        st.altair_chart(chart_box, use_container_width=True)
+elif aba == "Statistical Indicators 2":
+    st.subheader("📊 Statistical Indicators 2")
+    st.markdown("Análise estatística avançada com filtros de Tipo, Status e Período.")
+
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtro de Tipo (Receita, Despesa, Transferência)
+        tipo_opcoes = ["Todos", "Receita", "Despesa", "Transferência"]
+        tipo_selecionado = st.selectbox("📌 Filtrar por Tipo", tipo_opcoes, index=0)
+        if tipo_selecionado != "Todos":
+            df = df[df["Tipo"] == tipo_selecionado]
+
+        # Filtro de Status (Efetivado, Budget)
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+        if status_selecionado != "Todos":
+            df = df[df["Status"] == status_selecionado]
+
+        # Filtro de Período (Ano-Mês)
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
+
+        mes_selecionado_si2 = st.selectbox("📅 Selecione o Mês (Ano-Mês)", meses_disponiveis, key="sel_mes_si2")
+        ano_sel, mes_sel = map(int, mes_selecionado_si2.split("-"))
+        df = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
+
+        # ==================== PARÂMETROS ESTATÍSTICOS ====================
+        pivot_stats2 = df.groupby("AnoMes")["Valor"].agg([
+            ("Mínimo", "min"),
+            ("Máximo", "max"),
+            ("Mediana", "median"),
+            ("Média", "mean"),
+            ("Desvio Padrão", "std"),
+            ("Variância", "var"),
+            ("Soma", "sum"),
+            ("Contagem", "count")
+        ]).reset_index().rename(columns={"AnoMes": "Mês"})
+
+        st.dataframe(pivot_stats2, use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 4️⃣ Histograma de Distribuição de Valores")
-        chart_hist = alt.Chart(df).mark_bar(color="#2a9d8f").encode(
+        st.markdown("### 📈 Gráficos Estatísticos Avançados")
+
+        # Evolução da Mediana
+        chart_mediana = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
+            x=alt.X("Mês:N", title="Mês"),
+            y=alt.Y("Mediana:Q", title="Mediana (R$)"),
+            tooltip=["Mês", "Mediana"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_mediana, use_container_width=True)
+
+        # Faixa de Valores (Mínimo vs Máximo)
+        df_range = pivot_stats2.melt(id_vars="Mês", value_vars=["Mínimo", "Máximo"], var_name="Faixa", value_name="Valor")
+        chart_range = alt.Chart(df_range).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("Mês:N", title="Mês"),
+            y=alt.Y("Valor:Q", title="Valor (R$)"),
+            color=alt.Color("Faixa:N", scale=alt.Scale(domain=["Mínimo", "Máximo"], range=["#264653", "#e76f51"])),
+            tooltip=["Mês", "Faixa", "Valor"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_range, use_container_width=True)
+
+        # Boxplot por Categoria
+        chart_box_cat = alt.Chart(df).mark_boxplot(extent='min-max').encode(
+            x=alt.X("Categoria:N", title="Categoria"),
+            y=alt.Y("Valor:Q", title="Valores (R$)"),
+            color=alt.Color("Tipo:N", title="Tipo"),
+            tooltip=["Categoria", "Valor", "Tipo"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_box_cat, use_container_width=True)
+
+        # Histograma por Tipo de Lançamento
+        chart_hist_tipo = alt.Chart(df).mark_bar().encode(
             x=alt.X("Valor:Q", bin=alt.Bin(maxbins=30), title="Faixa de Valores (R$)"),
             y=alt.Y("count()", title="Frequência"),
-            tooltip=["count()"]
+            color=alt.Color("Tipo:N", title="Tipo"),
+            tooltip=["count()", "Tipo"]
         ).properties(height=350).interactive()
-        st.altair_chart(chart_hist, use_container_width=True)
+        st.altair_chart(chart_hist_tipo, use_container_width=True)
+
+        # Dispersão Valor vs Data
+        chart_scatter = alt.Chart(df).mark_circle(size=60).encode(
+            x=alt.X("Data:T", title="Data"),
+            y=alt.Y("Valor:Q", title="Valor (R$)"),
+            color=alt.Color("Categoria:N", title="Categoria"),
+            tooltip=["Data", "Valor", "Categoria", "Tipo"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_scatter, use_container_width=True)
+
+        # Evolução da Variância
+        chart_var = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#f4a261").encode(
+            x=alt.X("Mês:N", title="Mês"),
+            y=alt.Y("Variância:Q", title="Variância"),
+            tooltip=["Mês", "Variância"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_var, use_container_width=True)
+
+        # Evolução da Soma Mensal
+        chart_soma = alt.Chart(pivot_stats2).mark_bar(color="#2a9d8f").encode(
+            x=alt.X("Mês:N", title="Mês"),
+            y=alt.Y("Soma:Q", title="Soma (R$)"),
+            tooltip=["Mês", "Soma"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_soma, use_container_width=True)
+
+        # Evolução da Contagem de Lançamentos
+        chart_count = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#e76f51").encode(
+            x=alt.X("Mês:N", title="Mês"),
+            y=alt.Y("Contagem:Q", title="Qtd. Lançamentos"),
+            tooltip=["Mês", "Contagem"]
+        ).properties(height=320).interactive()
+        st.altair_chart(chart_count, use_container_width=True)
 
     else:
         st.info("Nenhum lançamento cadastrado para análise estatística.")
-
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators - Análise Avançada")
 
