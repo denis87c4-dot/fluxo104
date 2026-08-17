@@ -911,21 +911,97 @@ elif aba == "Financial Indicators":
                 
             debts = df_m[(df_m["Tipo"] == "Despesa") & (df_m["Status"] == "Efetivado") & (df_m["Categoria"].str.contains("debt|dívida", case=False, na=False))]["Valor"].sum()
             credit_card = df_m[(df_m["Tipo"] == "Despesa") & ((df_m["Conta"].isin(cartoes_nomes)) | (df_m["Categoria"].str.contains("credit|cartão", case=False, na=False)))]["Valor"].sum()
-            total_obrigacoes = debts + credit_card
-            
-            dti_val = (total_obrigacoes / income * 100) if income > 0 else 0.0
-            dti_str = f"{dti_val:.1f}% (⚠️ Alto > 40%)" if dti_val > 40.0 else f"{dti_val:.1f}% (Saudável <= 40%)"
-            
-            dados_avancados_7_9.append({
-                "Mês": m,
-                "7. Interest Coverage (Cobertura de Juros)": interest_cov_str,
-                "8. ROA Pessoal (Retorno sobre Ativos)": roa_str,
-                "9. Debt-to-Income (Endividamento - DTI)": dti_str
-            })
-        st.dataframe(pd.DataFrame(dados_avancados_7_9).set_index("Mês"), use_container_width=True)
-    else:
-        st.info("Nenhum dado cadastrado para calcular os indicadores financeiros.")
+elif aba == "Financial Indicators":
+    st.subheader("💹 Financial Indicators - Métricas de Liquidez, Endividamento e Rentabilidade")
 
+    df = st.session_state.lancamentos.copy()
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+    # 🔹 Filtro por Status
+    status_opcoes = ["Todos", "Efetivado", "Budget"]
+    status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+    if status_sel != "Todos":
+        df = df[df["Status"] == status_sel]
+
+    if not df.empty:
+        # 🔹 Cálculos principais
+        receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
+        despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
+        transferencias = df[df["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido = receitas - despesas
+
+        # Liquidez imediata (Cash Ratio)
+        cash_ratio = (receitas / despesas) if despesas > 0 else 0.0
+
+        # Taxa de poupança
+        savings_rate = ((receitas - despesas) / receitas * 100) if receitas > 0 else 0.0
+
+        # Comprometimento da renda
+        comprometimento_renda = (despesas / receitas * 100) if receitas > 0 else 0.0
+
+        # Burn Rate (queima de caixa)
+        burn_rate = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
+
+        # Endividamento relativo (cartões)
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        passivo_cartao = df[(df["Tipo"]=="Despesa") & (df["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        endividamento_relativo = (passivo_cartao / receitas * 100) if receitas > 0 else 0.0
+
+        # 🔹 Exibição de métricas
+        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+        with col_f1:
+            st.metric("💰 Taxa de Poupança", f"{savings_rate:.1f}%")
+        with col_f2:
+            st.metric("📊 Comprometimento Renda", f"{comprometimento_renda:.1f}%")
+        with col_f3:
+            st.metric("🛡️ Cash Ratio", f"{cash_ratio:.2f}x")
+        with col_f4:
+            st.metric("🔥 Burn Rate", f"R$ {burn_rate:,.2f}")
+        with col_f5:
+            st.metric("💳 Endividamento Relativo", f"{endividamento_relativo:.1f}%")
+
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Financeiros")
+
+        # 🔹 Evolução de Receitas vs Despesas
+        df_evol = df.groupby("AnoMes").agg({
+            "Valor": lambda x: x[df["Tipo"]=="Receita"].sum()
+        }).rename(columns={"Valor":"Receita"}).reset_index()
+
+        df_evol["Despesa"] = df.groupby("AnoMes")["Valor"].apply(
+            lambda x: x[df["Tipo"]=="Despesa"].sum()
+        ).values
+        df_evol["Saldo"] = df_evol["Receita"] - df_evol["Despesa"]
+
+        chart_evol = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f")
+        ).properties(title="Receitas vs Despesas")
+        chart_evol2 = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Despesa:Q", color=alt.value("#e76f51")
+        )
+        chart_evol3 = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Saldo:Q", color=alt.value("#264653")
+        )
+        st.altair_chart(chart_evol + chart_evol2 + chart_evol3, use_container_width=True)
+
+        # 🔹 Gráfico de Endividamento Relativo
+        chart_endiv = alt.Chart(df_evol).mark_bar(color="#f4a261").encode(
+            x="AnoMes:N", y="Despesa:Q", tooltip=["AnoMes","Despesa"]
+        ).properties(title="Endividamento Relativo (Cartões)")
+        st.altair_chart(chart_endiv, use_container_width=True)
+
+        # 🔹 Gráfico de Burn Rate
+        chart_burn = alt.Chart(df_evol).mark_bar().encode(
+            x="AnoMes:N", y="Saldo:Q",
+            color=alt.condition(alt.datum.Saldo < 0, alt.value("#e76f51"), alt.value("#2a9d8f")),
+            tooltip=["AnoMes","Saldo"]
+        ).properties(title="Burn Rate Mensal")
+        st.altair_chart(chart_burn, use_container_width=True)
+
+    else:
+        st.info("Nenhum dado disponível para análise financeira.")
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators & Advanced Econometrics")
     st.markdown("Parâmetros estatísticos avançados, assimetria, curtose e detecção de outliers.")
