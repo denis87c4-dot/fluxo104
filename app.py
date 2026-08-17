@@ -1002,72 +1002,84 @@ elif aba == "Financial Indicators":
 
     else:
         st.info("Nenhum dado disponível para análise financeira.")
-elif aba == "Statistical Indicators":
-    st.subheader("📊 Statistical Indicators & Advanced Econometrics")
-    st.markdown("Parâmetros estatísticos avançados, assimetria, curtose e detecção de outliers.")
-    
+elif aba == "Statistical Indicators 2":
+    st.subheader("📊 Statistical Indicators 2")
+    st.markdown("Análise estatística dos lançamentos com filtro por Status (Budget ou Efetivado).")
+
     df = st.session_state.lancamentos
-    if not df.empty and not df[df["Status"] == "Budget"].empty:
-        df_b = df[df["Status"] == "Budget"].copy()
-        df_b["Data"] = pd.to_datetime(df_b["Data"], errors="coerce")
-        df_b["AnoMes"] = df_b["Data"].dt.to_period("M").astype(str)
-        
-        pivot_mensal = df_b.pivot_table(index="AnoMes", columns="Tipo", values="Valor", aggfunc="sum", fill_value=0.0)
-        if "Receita" not in pivot_mensal.columns:
-            pivot_mensal["Receita"] = 0.0
-        if "Despesa" not in pivot_mensal.columns:
-            pivot_mensal["Despesa"] = 0.0
-            
-        pivot_mensal = pivot_mensal.rename(columns={"Receita": "Income", "Despesa": "Expense"})
-        pivot_mensal["Cash Flow"] = pivot_mensal["Income"] - pivot_mensal["Expense"]
-        pivot_mensal = pivot_mensal.reset_index().sort_values("AnoMes")
-        
-        if len(pivot_mensal) > 2:
-            valores_exp = pivot_mensal["Expense"]
-            media_geral = valores_exp.mean()
-            desvio_padrao = valores_exp.std() if len(valores_exp) > 1 else 0.0
-            
-            n_obs = len(valores_exp)
-            if desvio_padrao > 0 and n_obs > 2:
-                skewness = (n_obs / ((n_obs - 1) * (n_obs - 2))) * np.sum(((valores_exp - media_geral) / desvio_padrao)**3)
-                kurtosis = ((n_obs * (n_obs + 1)) / ((n_obs - 1) * (n_obs - 2) * (n_obs - 3))) * np.sum(((valores_exp - media_geral) / desvio_padrao)**4) - (3 * (n_obs - 1)**2 / ((n_obs - 2) * (n_obs - 3)))
-            else:
-                skewness, kurtosis = 0.0, 0.0
-                
-            col_stat1, col_stat2 = st.columns(2)
-            col_stat1.metric("📐 Assimetria de Gastos (Skewness)", f"{skewness:.2f}", delta="> 0 indica cauda longa à direita")
-            col_stat2.metric("⛰️ Curtose de Despesas (Kurtosis)", f"{kurtosis:.2f}", delta="Achatamento da distribuição")
-            
-            st.markdown("---")
-            st.markdown("### 📌 Z-Score, Outliers e Indicadores Mensais")
-            
-            dados_stats = []
-            for idx, row in pivot_mensal.iterrows():
-                m = row["AnoMes"]
-                val = row["Expense"]
-                z_score = (val - media_geral) / desvio_padrao if desvio_padrao > 0 else 0.0
-                
-                if abs(z_score) > 2.0:
-                    interpretacao = "🚨 Outlier Estatístico (Anomalia Severa)"
-                elif z_score > 1.0:
-                    interpretacao = "⚠️ Acima do Limiar de Confiança"
-                elif z_score < -1.0:
-                    interpretacao = "🌟 Otimizado (Excelente Economia)"
-                else:
-                    interpretacao = "✅ Dentro da Banda de Normalidade"
-                
-                dados_stats.append({
-                    "Mês": m,
-                    "Total Expenses": f"R$ {val:,.2f}",
-                    "Média Histórica": f"R$ {media_geral:,.2f}",
-                    "Desvio Padrão": f"R$ {desvio_padrao:,.2f}",
-                    "Z-Score": round(z_score, 2),
-                    "Status Analítico": interpretacao
-                })
-                
-            st.dataframe(aplicar_estilo_tabela(pd.DataFrame(dados_stats).set_index("Mês").style), use_container_width=True)
-            
-            st.markdown("---")
+
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtro de Status
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+
+        if status_selecionado != "Todos":
+            df = df[df["Status"] == status_selecionado]
+
+        # Pivot para estatísticas
+        pivot_stats = df.pivot_table(
+            index="AnoMes",
+            values="Valor",
+            aggfunc=["sum", "mean", "std", "count"],
+            fill_value=0.0
+        ).reset_index()
+
+        pivot_stats.columns = ["Mês", "Total", "Média", "Desvio Padrão", "Qtd. Lançamentos"]
+
+        # Exibir tabela formatada
+        st.dataframe(pivot_stats, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Estatísticos")
+
+        col_s1, col_s2 = st.columns(2)
+
+        with col_s1:
+            st.markdown("#### 1️⃣ Evolução do Total por Mês")
+            chart_total = alt.Chart(pivot_stats).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
+                x=alt.X("Mês:N", title="Mês"),
+                y=alt.Y("Total:Q", title="Total (R$)"),
+                tooltip=["Mês", "Total"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_total, use_container_width=True)
+
+        with col_s2:
+            st.markdown("#### 2️⃣ Média e Desvio Padrão")
+            df_melt_stats = pivot_stats.melt(id_vars="Mês", value_vars=["Média", "Desvio Padrão"], var_name="Métrica", value_name="Valor")
+            chart_stats = alt.Chart(df_melt_stats).mark_line(point=True, strokeWidth=3).encode(
+                x=alt.X("Mês:N", title="Mês"),
+                y=alt.Y("Valor:Q", title="Valor (R$)"),
+                color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Média", "Desvio Padrão"], range=["#264653", "#e76f51"])),
+                tooltip=["Mês", "Métrica", "Valor"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_stats, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 3️⃣ Boxplot Estatístico por Mês")
+        chart_box = alt.Chart(df).mark_boxplot(extent='min-max').encode(
+            x=alt.X("AnoMes:N", title="Mês"),
+            y=alt.Y("Valor:Q", title="Valores (R$)"),
+            color=alt.Color("Tipo:N", title="Tipo de Lançamento"),
+            tooltip=["AnoMes", "Valor", "Tipo", "Categoria"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_box, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 4️⃣ Histograma de Distribuição de Valores")
+        chart_hist = alt.Chart(df).mark_bar(color="#2a9d8f").encode(
+            x=alt.X("Valor:Q", bin=alt.Bin(maxbins=30), title="Faixa de Valores (R$)"),
+            y=alt.Y("count()", title="Frequência"),
+            tooltip=["count()"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_hist, use_container_width=True)
+
+    else:
+        st.info("Nenhum lançamento cadastrado para análise estatística.")
+
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators - Análise Avançada")
 
