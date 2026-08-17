@@ -992,19 +992,94 @@ elif aba == "Statistical Indicators":
             st.dataframe(aplicar_estilo_tabela(pd.DataFrame(dados_stats).set_index("Mês").style), use_container_width=True)
             
             st.markdown("---")
-            st.markdown("### 📈 Histograma de Densidade de Gastos Mensais")
-            chart_hist = alt.Chart(pivot_mensal).mark_bar(color='#264653').encode(
-                x=alt.X('Expense:Q', bin=True, title='Faixas de Despesa (R$)'),
-                y=alt.Y('count()', title='Frequência de Ocorrência (Meses)'),
-                tooltip=['count()']
-            ).properties(height=300).interactive()
-            st.altair_chart(chart_hist, use_container_width=True)
-            
-        else:
-            st.info("Requer pelo menos 3 meses registrados para calcular métricas estatísticas avançadas (Skewness/Kurtosis).")
-    else:
-        st.info("Nenhum dado de Budget cadastrado para calcular os indicadores estatísticos.")
+elif aba == "Statistical Indicators":
+    st.subheader("📊 Statistical Indicators - Análise Avançada")
 
+    df = st.session_state.lancamentos.copy()
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+    # 🔹 Filtro por Status
+    status_opcoes = ["Todos", "Efetivado", "Budget"]
+    status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+    if status_sel != "Todos":
+        df = df[df["Status"] == status_sel]
+
+    # 🔹 Indicadores Estatísticos
+    st.markdown("### 📈 Indicadores Estatísticos Principais")
+
+    if not df.empty:
+        receitas = df[df["Tipo"] == "Receita"]["Valor"]
+        despesas = df[df["Tipo"] == "Despesa"]["Valor"]
+
+        media_receitas = receitas.mean()
+        media_despesas = despesas.mean()
+        desvio_receitas = receitas.std()
+        desvio_despesas = despesas.std()
+        coef_var_receitas = (desvio_receitas / media_receitas * 100) if media_receitas > 0 else 0
+        coef_var_despesas = (desvio_despesas / media_despesas * 100) if media_despesas > 0 else 0
+
+        col_si1, col_si2, col_si3, col_si4 = st.columns(4)
+        with col_si1:
+            st.metric("📊 Média Receitas", f"R$ {media_receitas:,.2f}")
+        with col_si2:
+            st.metric("📉 Média Despesas", f"R$ {media_despesas:,.2f}")
+        with col_si3:
+            st.metric("📈 CV Receitas", f"{coef_var_receitas:.1f}%")
+        with col_si4:
+            st.metric("📉 CV Despesas", f"{coef_var_despesas:.1f}%")
+
+        st.markdown("---")
+        st.markdown("### 📊 Gráficos Estatísticos")
+
+        # 🔹 Histograma de Receitas
+        chart_hist_rec = alt.Chart(df[df["Tipo"]=="Receita"]).mark_bar(color="#2a9d8f").encode(
+            x=alt.X("Valor:Q", bin=alt.Bin(maxbins=20), title="Faixas de Receita (R$)"),
+            y="count()",
+            tooltip=["count()"]
+        ).properties(title="Distribuição de Receitas")
+        st.altair_chart(chart_hist_rec, use_container_width=True)
+
+        # 🔹 Histograma de Despesas
+        chart_hist_desp = alt.Chart(df[df["Tipo"]=="Despesa"]).mark_bar(color="#e76f51").encode(
+            x=alt.X("Valor:Q", bin=alt.Bin(maxbins=20), title="Faixas de Despesa (R$)"),
+            y="count()",
+            tooltip=["count()"]
+        ).properties(title="Distribuição de Despesas")
+        st.altair_chart(chart_hist_desp, use_container_width=True)
+
+        # 🔹 Boxplot de Despesas por Categoria
+        chart_box = alt.Chart(df[df["Tipo"]=="Despesa"]).mark_boxplot().encode(
+            x="Categoria:N", y="Valor:Q"
+        ).properties(title="Boxplot de Despesas por Categoria")
+        st.altair_chart(chart_box, use_container_width=True)
+
+        # 🔹 Correlação Receita vs Despesa por Mês
+        df_corr = df.groupby("AnoMes").agg({
+            "Valor": lambda x: x[df["Tipo"]=="Receita"].sum()
+        }).rename(columns={"Valor":"Receita"}).reset_index()
+
+        df_corr["Despesa"] = df.groupby("AnoMes")["Valor"].apply(
+            lambda x: x[df["Tipo"]=="Despesa"].sum()
+        ).values
+
+        chart_corr = alt.Chart(df_corr).mark_circle(size=80, color="#264653").encode(
+            x="Receita:Q", y="Despesa:Q", tooltip=["AnoMes"]
+        ).properties(title="Correlação Receita vs Despesa")
+        st.altair_chart(chart_corr, use_container_width=True)
+
+        # 🔹 Média móvel de despesas
+        df_desp = df[df["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
+        df_desp["MediaMovel"] = df_desp["Valor"].rolling(window=3).mean()
+
+        chart_mm = alt.Chart(df_desp).mark_line(point=True, strokeWidth=3, color="#f4a261").encode(
+            x="AnoMes:N", y="MediaMovel:Q", tooltip=["AnoMes", "MediaMovel"]
+        ).properties(title="Média Móvel de Despesas (3 meses)")
+        st.altair_chart(chart_mm, use_container_width=True)
+
+    else:
+        st.info("Nenhum dado disponível para análise estatística.")
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
     col_a, col_b = st.columns(2)
