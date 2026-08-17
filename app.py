@@ -279,6 +279,64 @@ if aba == "Dashboard":
         with col7: st.metric("⚠️ Vencidas", f"R$ {despesas_vencidas:,.2f}", delta="Alertas", delta_color="inverse")
 
         # 📌 Indicadores executivos
+if aba == "Dashboard":
+    st.subheader("📊 Executive Dashboard")
+
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        df["AnoTrim"] = df["Data"].dt.to_period("Q").astype(str)
+
+        # 🔎 Filtros
+        periodo_tipo = st.radio("📅 Tipo de Período", ["Mês", "Trimestre"], horizontal=True)
+        if periodo_tipo == "Mês":
+            periodos = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        else:
+            periodos = sorted(df["AnoTrim"].unique().tolist(), reverse=True)
+
+        periodo_sel = st.selectbox("Selecione o Período", periodos, index=0)
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+
+        # 🔎 Aplicar filtros
+        if periodo_tipo == "Mês":
+            ano_sel, mes_sel = map(int, periodo_sel.split("-"))
+            df_filtrado = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
+        else:
+            df_filtrado = df[df["AnoTrim"] == periodo_sel]
+
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        # 🔢 Métricas principais
+        receitas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        despesas_cc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (~df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        despesas_cartao = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido = receitas - despesas_cc
+
+        # 🔥 Novas métricas
+        hoje = pd.to_datetime(datetime.today().date())
+        despesas_a_pagar = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] >= hoje)]["Valor"].sum()
+        despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje)]["Valor"].sum()
+        risco_inadimplencia = (despesas_vencidas / (despesas_cc + despesas_cartao)) * 100 if (despesas_cc + despesas_cartao) > 0 else 0.0
+
+        # 📊 Cards de métricas
+        col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+        with col1: st.metric("🟢 Entradas", f"R$ {receitas:,.2f}", delta=status_sel)
+        with col2: st.metric("🔴 Saídas (C/C)", f"R$ {despesas_cc:,.2f}", delta=status_sel, delta_color="inverse")
+        with col3: st.metric("💳 Passivo Cartão", f"R$ {despesas_cartao:,.2f}", delta="Saldo Devedor", delta_color="inverse")
+        with col4: st.metric("🔵 Transferências", f"R$ {transferencias:,.2f}", delta=status_sel)
+        with col5: st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}", delta="Caixa Real")
+        with col6: st.metric("🟠 A Pagar", f"R$ {despesas_a_pagar:,.2f}", delta="Compromissos Futuros")
+        with col7: st.metric("⚠️ Vencidas", f"R$ {despesas_vencidas:,.2f}", delta="Alertas", delta_color="inverse")
+
+        # 📌 Indicadores executivos
         net_savings_rate = (saldo_liquido / receitas * 100) if receitas > 0 else 0.0
         comprometimento_renda = (despesas_cc / receitas * 100) if receitas > 0 else 0.0
         cash_ratio_val = (receitas / despesas_cc) if despesas_cc > 0 else 0.0
@@ -292,9 +350,7 @@ if aba == "Dashboard":
         with coln5: st.metric("⚖️ Risco Inadimplência", f"{risco_inadimplencia:.1f}%", delta_color="inverse")
 
         st.markdown("---")
-        st.markdown("### 📈 Gráficos Comparativos")
-
-        # Income vs Expense vs Cartão + A Pagar + Vencidas
+        st.markdown("### 🗓️ Histórico Consolidado")
         df_hist = df_filtrado.copy()
         df_hist["Expense_CC"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
         df_hist["Expense_Card"] = df_hist.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
@@ -314,20 +370,26 @@ if aba == "Dashboard":
             "Expense_Card": "Passivo Cartão"
         })
 
+        pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
+        pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
         pivot_hist["A Pagar"] = despesas_a_pagar
         pivot_hist["Vencidas"] = despesas_vencidas
 
-        df_melt = pivot_hist.melt(id_vars="Mês", value_vars=["Income", "Expense (C/C)", "Passivo Cartão", "A Pagar", "Vencidas"], var_name="Métrica", value_name="Valor")
-        chart = alt.Chart(df_melt).mark_line(strokeWidth=3, point=True).encode(
-            x=alt.X('Mês:N', title='Mês'),
-            y=alt.Y('Valor:Q', title='Montante (R$)'),
-            color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Income','Expense (C/C)','Passivo Cartão','A Pagar','Vencidas'], range=['#2a9d8f','#e76f51','#f4a261','#e9c46a','#ff4b4b']), title='Legenda'),
-            tooltip=['Mês','Métrica','Valor']
-        ).properties(height=350).interactive()
-        st.altair_chart(chart, use_container_width=True)
+        st.dataframe(
+            aplicar_estilo_tabela(pivot_hist.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]),
+            use_container_width=True
+        )
 
-    else:
-        st.info("Nenhum lançamento registrado para exibir métricas e gráficos.")
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Comparativos")
+
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.markdown("#### 1️⃣ Income vs Expense vs Cartão vs A Pagar vs Vencidas")
+            df_melt_ie = pivot_hist.melt(id_vars="Mês", value_vars=["Income", "Expense (C/C)", "Passivo Cartão", "A Pagar", "Vencidas"], var_name="Métrica", value_name="Valor")
+            chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X('Mês:N', title='Mês'),
+                y=alt.Y('Valor:Q', title='Montante
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
