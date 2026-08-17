@@ -207,78 +207,7 @@ if aba == "Dashboard":
         despesas_cartao_mes = 0.0
         despesas_por_cartao = pd.Series(dtype=float)
         budget_despesas = 0.0
-        budget_receitas = 0.0
-        despesas_vencidas = 0.0
-        texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
-        delta_rec = 0.0
-        delta_desp = 0.0
-        saldo_liquido_real = 0.0
-        df_vencidas = pd.DataFrame()
-        mes_selecionado = datetime.today().strftime("%Y-%m")
-        net_savings_rate = 0.0
-        comprometimento_renda = 0.0
-        cash_ratio_val = 0.0
-        burn_rate_val = 0.0
 
-if aba == "Dashboard":
-    st.subheader("📊 Executive Dashboard")
-
-    df = st.session_state.lancamentos
-
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-        df["AnoTrim"] = df["Data"].dt.to_period("Q").astype(str)
-
-        # 🔎 Filtros
-        periodo_tipo = st.radio("📅 Tipo de Período", ["Mês", "Trimestre"], horizontal=True)
-        if periodo_tipo == "Mês":
-            periodos = sorted(df["AnoMes"].unique().tolist(), reverse=True)
-        else:
-            periodos = sorted(df["AnoTrim"].unique().tolist(), reverse=True)
-
-        periodo_sel = st.selectbox("Selecione o Período", periodos, index=0)
-        status_opcoes = ["Todos", "Efetivado", "Budget"]
-        status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-
-        # 🔎 Aplicar filtros
-        if periodo_tipo == "Mês":
-            ano_sel, mes_sel = map(int, periodo_sel.split("-"))
-            df_filtrado = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
-        else:
-            df_filtrado = df[df["AnoTrim"] == periodo_sel]
-
-        if status_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
-
-        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-
-        # 🔢 Métricas principais
-        receitas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
-        despesas_cc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (~df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        despesas_cartao = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
-        saldo_liquido = receitas - despesas_cc
-
-        # 🔥 Novas métricas
-        hoje = pd.to_datetime(datetime.today().date())
-        despesas_a_pagar = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] >= hoje)]["Valor"].sum()
-        despesas_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje)]["Valor"].sum()
-        risco_inadimplencia = (despesas_vencidas / (despesas_cc + despesas_cartao)) * 100 if (despesas_cc + despesas_cartao) > 0 else 0.0
-        saldo_proj = receitas - despesas_a_pagar
-
-        # 📊 Cards de métricas
-        col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
-        with col1: st.metric("🟢 Entradas", f"R$ {receitas:,.2f}", delta=status_sel)
-        with col2: st.metric("🔴 Saídas (C/C)", f"R$ {despesas_cc:,.2f}", delta=status_sel, delta_color="inverse")
-        with col3: st.metric("💳 Passivo Cartão", f"R$ {despesas_cartao:,.2f}", delta="Saldo Devedor", delta_color="inverse")
-        with col4: st.metric("🔵 Transferências", f"R$ {transferencias:,.2f}", delta=status_sel)
-        with col5: st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}", delta="Caixa Real")
-        with col6: st.metric("🟠 A Pagar", f"R$ {despesas_a_pagar:,.2f}", delta="Compromissos Futuros")
-        with col7: st.metric("⚠️ Vencidas", f"R$ {despesas_vencidas:,.2f}", delta="Alertas", delta_color="inverse")
-
-        # 📌 Indicadores executivos
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
 
