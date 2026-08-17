@@ -880,70 +880,7 @@ elif aba == "Financial Indicators":
 
     else:
         st.info("Nenhum dado disponível para análise financeira.")
-elif aba == "Statistical Indicators 2":
-    st.subheader("📊 Statistical Indicators 2")
-    st.markdown("Análise estatística dos lançamentos com filtro por Status (Budget ou Efetivado).")
 
-    df = st.session_state.lancamentos
-
-    if not df.empty:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        # Filtro de Status
-        status_opcoes = ["Todos", "Efetivado", "Budget"]
-        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-
-        if status_selecionado != "Todos":
-            df = df[df["Status"] == status_selecionado]
-
-        # Pivot para estatísticas
-        pivot_stats = df.pivot_table(
-            index="AnoMes",
-            values="Valor",
-            aggfunc=["sum", "mean", "std", "count"],
-            fill_value=0.0
-        ).reset_index()
-
-        pivot_stats.columns = ["Mês", "Total", "Média", "Desvio Padrão", "Qtd. Lançamentos"]
-
-        # Exibir tabela formatada
-        st.dataframe(pivot_stats, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📈 Gráficos Estatísticos")
-
-        col_s1, col_s2 = st.columns(2)
-
-        with col_s1:
-            st.markdown("#### 1️⃣ Evolução do Total por Mês")
-            chart_total = alt.Chart(pivot_stats).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
-                x=alt.X("Mês:N", title="Mês"),
-                y=alt.Y("Total:Q", title="Total (R$)"),
-                tooltip=["Mês", "Total"]
-            ).properties(height=320).interactive()
-            st.altair_chart(chart_total, use_container_width=True)
-
-        with col_s2:
-            st.markdown("#### 2️⃣ Média e Desvio Padrão")
-            df_melt_stats = pivot_stats.melt(id_vars="Mês", value_vars=["Média", "Desvio Padrão"], var_name="Métrica", value_name="Valor")
-            chart_stats = alt.Chart(df_melt_stats).mark_line(point=True, strokeWidth=3).encode(
-                x=alt.X("Mês:N", title="Mês"),
-                y=alt.Y("Valor:Q", title="Valor (R$)"),
-                color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Média", "Desvio Padrão"], range=["#264653", "#e76f51"])),
-                tooltip=["Mês", "Métrica", "Valor"]
-            ).properties(height=320).interactive()
-            st.altair_chart(chart_stats, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 3️⃣ Boxplot Estatístico por Mês")
-        chart_box = alt.Chart(df).mark_boxplot(extent='min-max').encode(
-            x=alt.X("AnoMes:N", title="Mês"),
-            y=alt.Y("Valor:Q", title="Valores (R$)"),
-            color=alt.Color("Tipo:N", title="Tipo de Lançamento"),
-            tooltip=["AnoMes", "Valor", "Tipo", "Categoria"]
-        ).properties(height=350).interactive()
 elif aba == "Statistical Indicators 2":
     st.subheader("📊 Statistical Indicators 2")
     st.markdown("Análise estatística avançada com filtros de Tipo, Status e Período.")
