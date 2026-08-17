@@ -788,7 +788,6 @@ elif aba == "Monthly Audit":
     else:
         st.info("Nenhum lançamento cadastrado no sistema.")
 
-
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators - Métricas de Liquidez, Endividamento e Rentabilidade")
 
@@ -797,37 +796,26 @@ elif aba == "Financial Indicators":
     df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
     df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-    # 🔹 Filtro por Status
     status_opcoes = ["Todos", "Efetivado", "Budget"]
     status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
     if status_sel != "Todos":
         df = df[df["Status"] == status_sel]
 
     if not df.empty:
-        # 🔹 Cálculos principais
         receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
         despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
         transferencias = df[df["Tipo"] == "Transferência"]["Valor"].sum()
         saldo_liquido = receitas - despesas
 
-        # Liquidez imediata (Cash Ratio)
         cash_ratio = (receitas / despesas) if despesas > 0 else 0.0
-
-        # Taxa de poupança
         savings_rate = ((receitas - despesas) / receitas * 100) if receitas > 0 else 0.0
-
-        # Comprometimento da renda
         comprometimento_renda = (despesas / receitas * 100) if receitas > 0 else 0.0
-
-        # Burn Rate (queima de caixa)
         burn_rate = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
 
-        # Endividamento relativo (cartões)
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
         passivo_cartao = df[(df["Tipo"]=="Despesa") & (df["Conta"].isin(cartoes_nomes))]["Valor"].sum()
         endividamento_relativo = (passivo_cartao / receitas * 100) if receitas > 0 else 0.0
 
-        # 🔹 Exibição de métricas
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         with col_f1:
             st.metric("💰 Taxa de Poupança", f"{savings_rate:.1f}%")
@@ -843,7 +831,6 @@ elif aba == "Financial Indicators":
         st.markdown("---")
         st.markdown("### 📈 Gráficos Financeiros")
 
-        # 🔹 Evolução de Receitas vs Despesas
         df_evol = df.groupby("AnoMes").agg({
             "Valor": lambda x: x[df["Tipo"]=="Receita"].sum()
         }).rename(columns={"Valor":"Receita"}).reset_index()
@@ -864,13 +851,11 @@ elif aba == "Financial Indicators":
         )
         st.altair_chart(chart_evol + chart_evol2 + chart_evol3, use_container_width=True)
 
-        # 🔹 Gráfico de Endividamento Relativo
         chart_endiv = alt.Chart(df_evol).mark_bar(color="#f4a261").encode(
             x="AnoMes:N", y="Despesa:Q", tooltip=["AnoMes","Despesa"]
         ).properties(title="Endividamento Relativo (Cartões)")
         st.altair_chart(chart_endiv, use_container_width=True)
 
-        # 🔹 Gráfico de Burn Rate
         chart_burn = alt.Chart(df_evol).mark_bar().encode(
             x="AnoMes:N", y="Saldo:Q",
             color=alt.condition(alt.datum.Saldo < 0, alt.value("#e76f51"), alt.value("#2a9d8f")),
@@ -892,19 +877,16 @@ elif aba == "Statistical Indicators 2":
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-        # Filtro de Tipo (Receita, Despesa, Transferência)
         tipo_opcoes = ["Todos", "Receita", "Despesa", "Transferência"]
         tipo_selecionado = st.selectbox("📌 Filtrar por Tipo", tipo_opcoes, index=0)
         if tipo_selecionado != "Todos":
             df = df[df["Tipo"] == tipo_selecionado]
 
-        # Filtro de Status (Efetivado, Budget)
         status_opcoes = ["Todos", "Efetivado", "Budget"]
         status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
         if status_selecionado != "Todos":
             df = df[df["Status"] == status_selecionado]
 
-        # Filtro de Período (Ano-Mês)
         meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
         mes_atual_padrao = datetime.today().strftime("%Y-%m")
         if mes_atual_padrao not in meses_disponiveis:
@@ -914,7 +896,6 @@ elif aba == "Statistical Indicators 2":
         ano_sel, mes_sel = map(int, mes_selecionado_si2.split("-"))
         df = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
 
-        # ==================== PARÂMETROS ESTATÍSTICOS ====================
         pivot_stats2 = df.groupby("AnoMes")["Valor"].agg([
             ("Mínimo", "min"),
             ("Máximo", "max"),
@@ -931,7 +912,6 @@ elif aba == "Statistical Indicators 2":
         st.markdown("---")
         st.markdown("### 📈 Gráficos Estatísticos Avançados")
 
-        # Evolução da Mediana
         chart_mediana = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
             x=alt.X("Mês:N", title="Mês"),
             y=alt.Y("Mediana:Q", title="Mediana (R$)"),
@@ -939,7 +919,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=320).interactive()
         st.altair_chart(chart_mediana, use_container_width=True)
 
-        # Faixa de Valores (Mínimo vs Máximo)
         df_range = pivot_stats2.melt(id_vars="Mês", value_vars=["Mínimo", "Máximo"], var_name="Faixa", value_name="Valor")
         chart_range = alt.Chart(df_range).mark_line(point=True, strokeWidth=3).encode(
             x=alt.X("Mês:N", title="Mês"),
@@ -949,7 +928,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=320).interactive()
         st.altair_chart(chart_range, use_container_width=True)
 
-        # Boxplot por Categoria
         chart_box_cat = alt.Chart(df).mark_boxplot(extent='min-max').encode(
             x=alt.X("Categoria:N", title="Categoria"),
             y=alt.Y("Valor:Q", title="Valores (R$)"),
@@ -958,7 +936,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=350).interactive()
         st.altair_chart(chart_box_cat, use_container_width=True)
 
-        # Histograma por Tipo de Lançamento
         chart_hist_tipo = alt.Chart(df).mark_bar().encode(
             x=alt.X("Valor:Q", bin=alt.Bin(maxbins=30), title="Faixa de Valores (R$)"),
             y=alt.Y("count()", title="Frequência"),
@@ -967,7 +944,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=350).interactive()
         st.altair_chart(chart_hist_tipo, use_container_width=True)
 
-        # Dispersão Valor vs Data
         chart_scatter = alt.Chart(df).mark_circle(size=60).encode(
             x=alt.X("Data:T", title="Data"),
             y=alt.Y("Valor:Q", title="Valor (R$)"),
@@ -976,7 +952,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=350).interactive()
         st.altair_chart(chart_scatter, use_container_width=True)
 
-        # Evolução da Variância
         chart_var = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#f4a261").encode(
             x=alt.X("Mês:N", title="Mês"),
             y=alt.Y("Variância:Q", title="Variância"),
@@ -984,7 +959,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=320).interactive()
         st.altair_chart(chart_var, use_container_width=True)
 
-        # Evolução da Soma Mensal
         chart_soma = alt.Chart(pivot_stats2).mark_bar(color="#2a9d8f").encode(
             x=alt.X("Mês:N", title="Mês"),
             y=alt.Y("Soma:Q", title="Soma (R$)"),
@@ -992,7 +966,6 @@ elif aba == "Statistical Indicators 2":
         ).properties(height=350).interactive()
         st.altair_chart(chart_soma, use_container_width=True)
 
-        # Evolução da Contagem de Lançamentos
         chart_count = alt.Chart(pivot_stats2).mark_line(point=True, strokeWidth=3, color="#e76f51").encode(
             x=alt.X("Mês:N", title="Mês"),
             y=alt.Y("Contagem:Q", title="Qtd. Lançamentos"),
@@ -1002,77 +975,7 @@ elif aba == "Statistical Indicators 2":
 
     else:
         st.info("Nenhum lançamento cadastrado para análise estatística.")
-elif aba == "Statistical Indicators":
-    st.subheader("📊 Statistical Indicators - Análise Avançada")
 
-    df = st.session_state.lancamentos.copy()
-    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-    # 🔹 Filtro por Status
-    status_opcoes = ["Todos", "Efetivado", "Budget"]
-    status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-    if status_sel != "Todos":
-        df = df[df["Status"] == status_sel]
-
-    # 🔹 Indicadores Estatísticos
-    st.markdown("### 📈 Indicadores Estatísticos Principais")
-
-    if not df.empty:
-        receitas = df[df["Tipo"] == "Receita"]["Valor"]
-        despesas = df[df["Tipo"] == "Despesa"]["Valor"]
-
-        media_receitas = receitas.mean()
-        media_despesas = despesas.mean()
-        desvio_receitas = receitas.std()
-        desvio_despesas = despesas.std()
-        coef_var_receitas = (desvio_receitas / media_receitas * 100) if media_receitas > 0 else 0
-        coef_var_despesas = (desvio_despesas / media_despesas * 100) if media_despesas > 0 else 0
-
-        col_si1, col_si2, col_si3, col_si4 = st.columns(4)
-        with col_si1:
-            st.metric("📊 Média Receitas", f"R$ {media_receitas:,.2f}")
-        with col_si2:
-            st.metric("📉 Média Despesas", f"R$ {media_despesas:,.2f}")
-        with col_si3:
-            st.metric("📈 CV Receitas", f"{coef_var_receitas:.1f}%")
-        with col_si4:
-            st.metric("📉 CV Despesas", f"{coef_var_despesas:.1f}%")
-
-        st.markdown("---")
-        st.markdown("### 📊 Gráficos Estatísticos")
-
-        # 🔹 Histograma de Receitas
-        chart_hist_rec = alt.Chart(df[df["Tipo"]=="Receita"]).mark_bar(color="#2a9d8f").encode(
-            x=alt.X("Valor:Q", bin=alt.Bin(maxbins=20), title="Faixas de Receita (R$)"),
-            y="count()",
-            tooltip=["count()"]
-        ).properties(title="Distribuição de Receitas")
-        st.altair_chart(chart_hist_rec, use_container_width=True)
-
-        # 🔹 Histograma de Despesas
-        chart_hist_desp = alt.Chart(df[df["Tipo"]=="Despesa"]).mark_bar(color="#e76f51").encode(
-            x=alt.X("Valor:Q", bin=alt.Bin(maxbins=20), title="Faixas de Despesa (R$)"),
-            y="count()",
-            tooltip=["count()"]
-        ).properties(title="Distribuição de Despesas")
-        st.altair_chart(chart_hist_desp, use_container_width=True)
-
-        # 🔹 Boxplot de Despesas por Categoria
-        chart_box = alt.Chart(df[df["Tipo"]=="Despesa"]).mark_boxplot().encode(
-            x="Categoria:N", y="Valor:Q"
-        ).properties(title="Boxplot de Despesas por Categoria")
-        st.altair_chart(chart_box, use_container_width=True)
-
-        # 🔹 Correlação Receita vs Despesa por Mês
-        df_corr = df.groupby("AnoMes").agg({
-            "Valor": lambda x: x[df["Tipo"]=="Receita"].sum()
-        }).rename(columns={"Valor":"Receita"}).reset_index()
-
-        df_corr["Despesa"] = df.groupby("AnoMes")["Valor"].apply(
-            lambda x: x[df["Tipo"]=="Despesa"].sum()
-        ).values
 elif aba == "Statistical Indicators":
     st.subheader("📊 Statistical Indicators")
     st.markdown("Indicadores estatísticos avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
@@ -1084,19 +987,16 @@ elif aba == "Statistical Indicators":
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-        # Filtro de Tipo
         tipo_opcoes = ["Todos", "Receita", "Despesa"]
         tipo_selecionado = st.selectbox("📌 Filtrar por Tipo", tipo_opcoes, index=0)
         if tipo_selecionado != "Todos":
             df = df[df["Tipo"] == tipo_selecionado]
 
-        # Filtro de Status
         status_opcoes = ["Todos", "Efetivado", "Budget"]
         status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
         if status_selecionado != "Todos":
             df = df[df["Status"] == status_selecionado]
 
-        # Filtro de Período (Mensal, Trimestral, Quadrimestral)
         periodo_opcoes = ["Mensal", "Trimestral", "Quadrimestral"]
         periodo_selecionado = st.selectbox("📅 Selecionar Período", periodo_opcoes, index=0)
 
@@ -1108,7 +1008,6 @@ elif aba == "Statistical Indicators":
             df["Quadrimestre"] = ((df["Data"].dt.month - 1) // 4 + 1).astype(str)
             df["Periodo"] = df["Data"].dt.year.astype(str) + "-Qd" + df["Quadrimestre"]
 
-        # ==================== PARÂMETROS FINANCEIROS ====================
         cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
 
         df["Expense_CC"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
@@ -1131,11 +1030,9 @@ elif aba == "Statistical Indicators":
         pivot_stats["Cash Flow"] = pivot_stats["Receita"] - pivot_stats["Despesa (C/C)"]
         pivot_stats["Acumulado"] = pivot_stats["Cash Flow"].cumsum()
 
-        # Indicadores derivados
         pivot_stats["Taxa Poupança (%)"] = ((pivot_stats["Receita"] - pivot_stats["Despesa (C/C)"]) / pivot_stats["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
         pivot_stats["Comp. Renda (%)"] = (pivot_stats["Despesa (C/C)"] / pivot_stats["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
-        # ==================== TABELA ====================
         pivot_fmt = pivot_stats.copy()
         for col in ["Receita", "Despesa (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
             pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
@@ -1204,7 +1101,10 @@ elif aba == "Statistical Indicators":
             y=alt.Y("Burn Rate:Q", title="Burn Rate (R$)"),
             tooltip=["Periodo", "Burn Rate"]
         ).properties(height=350).interactive()
-        st.altair_chart(chart_burn, use
+        st.altair_chart(chart_burn, use_container_width=True)
+    else:
+        st.info("Nenhum lançamento cadastrado para estatísticas.")
+
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
     col_a, col_b = st.columns(2)
