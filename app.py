@@ -1073,23 +1073,138 @@ elif aba == "Statistical Indicators":
         df_corr["Despesa"] = df.groupby("AnoMes")["Valor"].apply(
             lambda x: x[df["Tipo"]=="Despesa"].sum()
         ).values
+elif aba == "Statistical Indicators":
+    st.subheader("📊 Statistical Indicators")
+    st.markdown("Indicadores estatísticos avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
 
-        chart_corr = alt.Chart(df_corr).mark_circle(size=80, color="#264653").encode(
-            x="Receita:Q", y="Despesa:Q", tooltip=["AnoMes"]
-        ).properties(title="Correlação Receita vs Despesa")
-        st.altair_chart(chart_corr, use_container_width=True)
+    df = st.session_state.lancamentos
 
-        # 🔹 Média móvel de despesas
-        df_desp = df[df["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
-        df_desp["MediaMovel"] = df_desp["Valor"].rolling(window=3).mean()
+    if not df.empty:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-        chart_mm = alt.Chart(df_desp).mark_line(point=True, strokeWidth=3, color="#f4a261").encode(
-            x="AnoMes:N", y="MediaMovel:Q", tooltip=["AnoMes", "MediaMovel"]
-        ).properties(title="Média Móvel de Despesas (3 meses)")
-        st.altair_chart(chart_mm, use_container_width=True)
+        # Filtro de Tipo
+        tipo_opcoes = ["Todos", "Receita", "Despesa"]
+        tipo_selecionado = st.selectbox("📌 Filtrar por Tipo", tipo_opcoes, index=0)
+        if tipo_selecionado != "Todos":
+            df = df[df["Tipo"] == tipo_selecionado]
 
-    else:
-        st.info("Nenhum dado disponível para análise estatística.")
+        # Filtro de Status
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+        if status_selecionado != "Todos":
+            df = df[df["Status"] == status_selecionado]
+
+        # Filtro de Período (Mensal, Trimestral, Quadrimestral)
+        periodo_opcoes = ["Mensal", "Trimestral", "Quadrimestral"]
+        periodo_selecionado = st.selectbox("📅 Selecionar Período", periodo_opcoes, index=0)
+
+        if periodo_selecionado == "Mensal":
+            df["Periodo"] = df["Data"].dt.to_period("M").astype(str)
+        elif periodo_selecionado == "Trimestral":
+            df["Periodo"] = df["Data"].dt.to_period("Q").astype(str)
+        elif periodo_selecionado == "Quadrimestral":
+            df["Quadrimestre"] = ((df["Data"].dt.month - 1) // 4 + 1).astype(str)
+            df["Periodo"] = df["Data"].dt.year.astype(str) + "-Qd" + df["Quadrimestre"]
+
+        # ==================== PARÂMETROS FINANCEIROS ====================
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        df["Expense_CC"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
+        df["Expense_Card"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
+        df["Income_Val"] = df.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+
+        pivot_stats = df.pivot_table(
+            index="Periodo",
+            values=["Income_Val", "Expense_CC", "Expense_Card"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        pivot_stats = pivot_stats.rename(columns={
+            "Income_Val": "Receita",
+            "Expense_CC": "Despesa (C/C)",
+            "Expense_Card": "Passivo Cartão"
+        })
+
+        pivot_stats["Cash Flow"] = pivot_stats["Receita"] - pivot_stats["Despesa (C/C)"]
+        pivot_stats["Acumulado"] = pivot_stats["Cash Flow"].cumsum()
+
+        # Indicadores derivados
+        pivot_stats["Taxa Poupança (%)"] = ((pivot_stats["Receita"] - pivot_stats["Despesa (C/C)"]) / pivot_stats["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+        pivot_stats["Comp. Renda (%)"] = (pivot_stats["Despesa (C/C)"] / pivot_stats["Receita"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+
+        # ==================== TABELA ====================
+        pivot_fmt = pivot_stats.copy()
+        for col in ["Receita", "Despesa (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+        pivot_fmt["Taxa Poupança (%)"] = pivot_fmt["Taxa Poupança (%)"].apply(lambda x: f"{x:.1f}%")
+        pivot_fmt["Comp. Renda (%)"] = pivot_fmt["Comp. Renda (%)"].apply(lambda x: f"{x:.1f}%")
+
+        st.dataframe(
+            aplicar_estilo_tabela(pivot_fmt.set_index("Periodo").style, subset=["Cash Flow", "Acumulado"]),
+            use_container_width=True
+        )
+
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Avançados")
+
+        col_g1, col_g2 = st.columns(2)
+
+        with col_g1:
+            st.markdown("#### 1️⃣ Receita vs Despesa vs Cartão")
+            df_melt_ie = pivot_stats.melt(id_vars="Periodo", value_vars=["Receita", "Despesa (C/C)", "Passivo Cartão"], var_name="Métrica", value_name="Valor")
+            chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X("Periodo:N", title="Período"),
+                y=alt.Y("Valor:Q", title="Montante (R$)"),
+                color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Receita", "Despesa (C/C)", "Passivo Cartão"], range=["#2a9d8f", "#e76f51", "#f4a261"])),
+                tooltip=["Periodo", "Métrica", "Valor"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ie, use_container_width=True)
+
+        with col_g2:
+            st.markdown("#### 2️⃣ Cash Flow vs Acumulado")
+            df_melt_ca = pivot_stats.melt(id_vars="Periodo", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
+            chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
+                x=alt.X("Periodo:N", title="Período"),
+                y=alt.Y("Valor:Q", title="Montante (R$)"),
+                color=alt.Color("Métrica:N", scale=alt.Scale(domain=["Cash Flow", "Acumulado"], range=["#264653", "#2a9d8f"])),
+                tooltip=["Periodo", "Métrica", "Valor"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_ca, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📊 Indicadores Derivados")
+        col_i1, col_i2 = st.columns(2)
+
+        with col_i1:
+            st.markdown("#### 3️⃣ Taxa de Poupança (%)")
+            chart_tp = alt.Chart(pivot_stats).mark_line(point=True, strokeWidth=3, color="#2a9d8f").encode(
+                x=alt.X("Periodo:N", title="Período"),
+                y=alt.Y("Taxa Poupança (%):Q", title="Taxa de Poupança (%)"),
+                tooltip=["Periodo", "Taxa Poupança (%)"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_tp, use_container_width=True)
+
+        with col_i2:
+            st.markdown("#### 4️⃣ Comprometimento da Renda (%)")
+            chart_cr = alt.Chart(pivot_stats).mark_line(point=True, strokeWidth=3, color="#e76f51").encode(
+                x=alt.X("Periodo:N", title="Período"),
+                y=alt.Y("Comp. Renda (%):Q", title="Comprometimento da Renda (%)"),
+                tooltip=["Periodo", "Comp. Renda (%)"]
+            ).properties(height=320).interactive()
+            st.altair_chart(chart_cr, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 🔥 Burn Rate por Período")
+        pivot_stats["Burn Rate"] = pivot_stats["Cash Flow"].apply(lambda x: abs(x) if x < 0 else 0)
+        chart_burn = alt.Chart(pivot_stats).mark_bar(color="#e76f51").encode(
+            x=alt.X("Periodo:N", title="Período"),
+            y=alt.Y("Burn Rate:Q", title="Burn Rate (R$)"),
+            tooltip=["Periodo", "Burn Rate"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_burn, use
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
     col_a, col_b = st.columns(2)
