@@ -788,64 +788,7 @@ elif aba == "Monthly Audit":
     else:
         st.info("Nenhum lançamento cadastrado no sistema.")
 
-elif aba == "Financial Indicators":
-    st.subheader("💹 Financial Indicators - Métricas de Liquidez, Endividamento e Rentabilidade")
 
-    df = st.session_state.lancamentos.copy()
-    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-    status_opcoes = ["Todos", "Efetivado", "Budget"]
-    status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-    if status_sel != "Todos":
-        df = df[df["Status"] == status_sel]
-
-    if not df.empty:
-        receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
-        despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
-        transferencias = df[df["Tipo"] == "Transferência"]["Valor"].sum()
-        saldo_liquido = receitas - despesas
-
-        cash_ratio = (receitas / despesas) if despesas > 0 else 0.0
-        savings_rate = ((receitas - despesas) / receitas * 100) if receitas > 0 else 0.0
-        comprometimento_renda = (despesas / receitas * 100) if receitas > 0 else 0.0
-        burn_rate = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
-
-        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-        passivo_cartao = df[(df["Tipo"]=="Despesa") & (df["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        endividamento_relativo = (passivo_cartao / receitas * 100) if receitas > 0 else 0.0
-
-        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
-        with col_f1:
-            st.metric("💰 Taxa de Poupança", f"{savings_rate:.1f}%")
-        with col_f2:
-            st.metric("📊 Comprometimento Renda", f"{comprometimento_renda:.1f}%")
-        with col_f3:
-            st.metric("🛡️ Cash Ratio", f"{cash_ratio:.2f}x")
-        with col_f4:
-            st.metric("🔥 Burn Rate", f"R$ {burn_rate:,.2f}")
-        with col_f5:
-            st.metric("💳 Endividamento Relativo", f"{endividamento_relativo:.1f}%")
-
-        st.markdown("---")
-        st.markdown("### 📈 Gráficos Financeiros")
-
-        df_evol = df.groupby("AnoMes").agg({
-            "Valor": lambda x: x[df["Tipo"]=="Receita"].sum()
-        }).rename(columns={"Valor":"Receita"}).reset_index()
-
-        df_evol["Despesa"] = df.groupby("AnoMes")["Valor"].apply(
-            lambda x: x[df["Tipo"]=="Despesa"].sum()
-        ).values
-        df_evol["Saldo"] = df_evol["Receita"] - df_evol["Despesa"]
-
-        chart_evol = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Receita:Q", color=alt.value("#2a9d8f")
-        ).properties(title="Receitas vs Despesas")
-        chart_evol2 = alt.Chart(df_evol).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Despesa:Q", color=alt.value("#e76f51")
-        )
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
     st.markdown("Indicadores financeiros avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
