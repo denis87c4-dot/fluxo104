@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit",
+    "Dashboard", "Resumo Geral", "Projections & Charts", "Novo Dashboard Inteligente", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -684,6 +684,112 @@ elif aba == "Projections & Charts":
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
+if aba == "Novo Dashboard Inteligente":
+    import altair as alt
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+
+    st.subheader("💎 Dashboard Inteligente - Cockpit Executivo")
+
+    df = st.session_state.lancamentos.copy()
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+    df["AnoTrimestre"] = df["Data"].dt.to_period("Q").astype(str)
+    df["AnoQuadrimestre"] = ((df["Data"].dt.month-1)//4+1).astype(str) + "/" + df["Data"].dt.year.astype(str)
+
+    # ==================== FILTROS ====================
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        filtro_periodo = st.radio("📅 Período", ["Mensal", "Trimestral", "Quadrimestral"])
+    with col_f2:
+        filtro_status = st.radio("📌 Status", ["Todos", "Efetivado", "Budget"])
+    with col_f3:
+        categoria_sel = st.multiselect("🎯 Categorias", df["Categoria"].unique().tolist(), default=df["Categoria"].unique().tolist())
+
+    if filtro_periodo == "Mensal":
+        periodo_col = "AnoMes"
+    elif filtro_periodo == "Trimestral":
+        periodo_col = "AnoTrimestre"
+    else:
+        periodo_col = "AnoQuadrimestre"
+
+    df_filtrado = df[df["Categoria"].isin(categoria_sel)]
+    if filtro_status != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
+
+    # ==================== PAINEL EXECUTIVO ====================
+    st.markdown("## 📊 Painel Executivo")
+    pivot = df_filtrado.pivot_table(index=periodo_col, values="Valor", columns="Tipo", aggfunc="sum", fill_value=0).reset_index()
+    pivot["CashFlow"] = pivot.get("Receita",0) - pivot.get("Despesa",0)
+    pivot["Acumulado"] = pivot["CashFlow"].cumsum()
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("🟢 Receita Total", f"R$ {pivot['Receita'].sum():,.2f}")
+    with col2:
+        st.metric("🔴 Despesa Total", f"R$ {pivot['Despesa'].sum():,.2f}", delta_color="inverse")
+    with col3:
+        st.metric("💰 Cash Flow Médio", f"R$ {pivot['CashFlow'].mean():,.2f}")
+    with col4:
+        st.metric("📈 Acumulado Final", f"R$ {pivot['Acumulado'].iloc[-1]:,.2f}")
+
+    # ==================== GRÁFICOS ====================
+    st.markdown("## 📈 Gráficos Inteligentes")
+
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown("### Receita vs Despesa")
+        chart_rd = alt.Chart(pivot).mark_line(point=True).encode(
+            x=periodo_col, y="Valor:Q", color="Tipo:N"
+        )
+        st.altair_chart(chart_rd, use_container_width=True)
+
+    with col_g2:
+        st.markdown("### Cash Flow vs Acumulado")
+        chart_cf = alt.Chart(pivot.melt(id_vars=periodo_col, value_vars=["CashFlow","Acumulado"])).mark_line(point=True).encode(
+            x=periodo_col, y="value:Q", color="variable:N"
+        )
+        st.altair_chart(chart_cf, use_container_width=True)
+
+    # Heatmap
+    st.markdown("### 🔥 Heatmap de Despesas por Categoria")
+    heatmap = alt.Chart(df_filtrado[df_filtrado["Tipo"]=="Despesa"]).mark_rect().encode(
+        x=alt.X(periodo_col, title="Período"),
+        y=alt.Y("Categoria:N", title="Categoria"),
+        color=alt.Color("Valor:Q", scale=alt.Scale(scheme="reds")),
+        tooltip=["Categoria","Valor"]
+    )
+    st.altair_chart(heatmap, use_container_width=True)
+
+    # Curva ABC
+    st.markdown("### 📊 Curva ABC de Gastos")
+    df_abc = df_filtrado[df_filtrado["Tipo"]=="Despesa"].groupby("Categoria")["Valor"].sum().reset_index().sort_values("Valor",ascending=False)
+    df_abc["Acumulado_%"] = df_abc["Valor"].cumsum()/df_abc["Valor"].sum()*100
+    chart_abc = alt.Chart(df_abc).mark_bar().encode(
+        x="Categoria", y="Valor", tooltip=["Categoria","Valor","Acumulado_%"]
+    )
+    line_abc = alt.Chart(df_abc).mark_line(color="red", point=True).encode(
+        x="Categoria", y="Acumulado_%"
+    )
+    st.altair_chart(alt.layer(chart_abc,line_abc).resolve_scale(y="independent"), use_container_width=True)
+
+    # ==================== INSIGHTS ====================
+    st.markdown("## 🤖 Insights Automáticos")
+    indicadores = {
+        "Taxa Poupança": (pivot["CashFlow"].sum()/pivot["Receita"].sum()*100) if pivot["Receita"].sum()>0 else 0,
+        "Comprom. Renda": (pivot["Despesa"].sum()/pivot["Receita"].sum()*100) if pivot["Receita"].sum()>0 else 0,
+        "Cash Ratio": (pivot["Receita"].sum()/pivot["Despesa"].sum()) if pivot["Despesa"].sum()>0 else 0,
+        "Burn Rate": abs(pivot["CashFlow"].mean()) if pivot["CashFlow"].mean()<0 else 0
+    }
+    if indicadores["Taxa Poupança"] < 10:
+        st.warning("⚠️ Sua taxa de poupança está abaixo de 10%. Considere reduzir despesas.")
+    if indicadores["Comprom. Renda"] > 70:
+        st.error("🚨 Mais de 70% da sua renda está comprometida com despesas.")
+    if indicadores["Cash Ratio"] < 1:
+        st.info("💡 Seu cash ratio está abaixo de 1, indicando baixa liquidez.")
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
     st.markdown("Auditoria avançada de desempenho orçamentário com seleção de período, filtros, percentuais de desvio e análise de peso por categoria.")
