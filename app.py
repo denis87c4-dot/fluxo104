@@ -637,41 +637,53 @@ elif aba == "Projections & Charts":
         st.markdown("---")
         st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
         if len(pivot_graf) > 0:
-elif aba == "Projections & Charts":
-    st.subheader("📈 Projections & Charts (12 Gráficos e Parâmetros Avançados de Elite)")
-    st.markdown("Central completa contendo a **Célula Suspensa** e módulos analíticos de projeção, risco e inteligência financeira.")
-    
-    df = st.session_state.lancamentos
-    if not df.empty:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+            df_res = pivot_graf.copy()
+            df_res["Resiliencia"] = np.clip(((df_res["CashFlow"] / (df_res["Despesa"] + 1)) * 50) + 50, 0, 100)
+            
+            chart_res = alt.Chart(df_res).mark_bar().encode(
+                x=alt.X('AnoMes:N', title='Mês'),
+                y=alt.Y('Resiliencia:Q', title='Índice de Resiliência (0 a 100)', scale=alt.Scale(domain=[0, 100])),
+                color=alt.condition(
+                    alt.datum.Resiliencia >= 50,
+                    alt.value('#2a9d8f'),
+                    alt.value('#e76f51')
+                ),
+                tooltip=['AnoMes', 'Resiliencia', 'CashFlow']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_res, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para calcular a resiliência.")
 
-        # 🔹 Filtros inteligentes adicionados
-        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
-        mes_atual_padrao = datetime.today().strftime("%Y-%m")
-        if mes_atual_padrao not in meses_disponiveis:
-            meses_disponiveis.insert(0, mes_atual_padrao)
+        st.markdown("---")
+        st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
+        df_scatter = df[df["Tipo"] == "Despesa"].copy()
+        if not df_scatter.empty:
+            df_scatter["DiaMes"] = df_scatter["Data"].dt.day
+            chart_scat = alt.Chart(df_scatter).mark_circle(size=80).encode(
+                x=alt.X('DiaMes:Q', title='Dia do Mês'),
+                y=alt.Y('Valor:Q', title='Valor da Despesa (R$)'),
+                color=alt.Color('Categoria:N', scale=alt.Scale(scheme='tableau10')),
+                tooltip=['Descricao', 'Valor', 'Categoria', 'Data']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_scat, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa para exibir no gráfico de dispersão.")
 
-        col_filt1, col_filt2 = st.columns([2, 4])
-        with col_filt1:
-            mes_selecionado_proj = st.selectbox("📅 Selecione o Mês (Ano-Mês)", meses_disponiveis, key="sel_mes_proj")
-        with col_filt2:
-            status_opcoes = ["Todos", "Efetivado", "Budget"]
-            status_selecionado_proj = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+        st.markdown("---")
+        st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
+        taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
+        taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
+        
+        media_despesas_anual = pivot_graf["Despesa"].mean() if not pivot_graf.empty else 1.0
+        renda_passiva_estimada = saldo_atual_caixa * taxa_mes_passivo
+        autonomia_pct = min((renda_passiva_estimada / (media_despesas_anual if media_despesas_anual > 0 else 1.0)) * 100, 100.0)
+        
+        st.metric("Grau de Independência Atual", f"{autonomia_pct:.2f}% dos gastos cobertos", delta=f"R$ {renda_passiva_estimada:,.2f} / mês de renda passiva teórica")
+        st.progress(int(max(0, min(100, autonomia_pct))))
+        
+    else:
+        st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
-        ano_sel, mes_sel = map(int, mes_selecionado_proj.split("-"))
-        df_mes = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
-        if status_selecionado_proj != "Todos":
-            df_mes = df_mes[df_mes["Status"] == status_selecionado_proj]
-
-        # 🔹 Agora todos os cálculos e gráficos usam df_mes em vez de df
-        cartoes_nomes_proj = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-        df_mes["Expense_CC"] = df_mes.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_proj else 0.0, axis=1)
-        df_mes["Income_Val"] = df_mes.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
-
-        pivot_graf = df_mes.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC"], aggfunc="sum", fill_value=0.0).reset_index()
-        ...
 elif aba == "Monthly Audit":
     st.subheader("🔍 Monthly Audit (Auditoria Executiva e Drill-Down)")
     st.markdown("Auditoria avançada de desempenho orçamentário com seleção de período, filtros, percentuais de desvio e análise de peso por categoria.")
