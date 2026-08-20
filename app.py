@@ -356,19 +356,7 @@ if aba == "Dashboard":
             index="AnoMes",
             values=["Income_Val", "Expense_CC", "Expense_Card"],
             aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
 
-        pivot_hist = pivot_hist.rename(columns={
-            "AnoMes": "Mês",
-            "Income_Val": "Income",
-            "Expense_CC": "Expense (C/C)",
-            "Expense_Card": "Passivo Cartão"
-        })
-
-        pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
-        pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
-        pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
     
