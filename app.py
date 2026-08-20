@@ -246,7 +246,89 @@ if aba == "Dashboard":
     with col_n4:
         st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
 
+   st.markdown("---")
+    st.markdown("### 🏦 Controle por Account (Efetivado)")
+
+    df_accounts = df[(df["Status"] == "Efetivado")].copy()
+
+    if not df_accounts.empty:
+        # Consolidado por conta
+        df_accounts_group = df_accounts.groupby("Conta").agg({
+            "Valor": [
+                lambda x: x[df_accounts["Tipo"] == "Receita"].sum(),
+                lambda x: x[df_accounts["Tipo"] == "Despesa"].sum()
+            ]
+        }).reset_index()
+
+        df_accounts_group.columns = ["Conta", "Receitas", "Despesas"]
+        df_accounts_group["Saldo Líquido"] = df_accounts_group["Receitas"] - df_accounts_group["Despesas"]
+
+        # Formatação
+        df_fmt = df_accounts_group.copy()
+        for col in ["Receitas", "Despesas", "Saldo Líquido"]:
+            df_fmt[col] = df_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+
+        st.dataframe(aplicar_estilo_tabela(df_fmt.style, subset=["Saldo Líquido"]), use_container_width=True)
+
+        # Gráfico comparativo Receitas vs Despesas por Conta
+        df_melt_acc = df_accounts_group.melt(id_vars="Conta", value_vars=["Receitas", "Despesas"], var_name="Tipo", value_name="Valor")
+        chart_acc = alt.Chart(df_melt_acc).mark_bar().encode(
+            x=alt.X('Conta:N', title='Conta'),
+            y=alt.Y('Valor:Q', title='Montante (R$)'),
+            color=alt.Color('Tipo:N', scale=alt.Scale(domain=['Receitas', 'Despesas'], range=['#2a9d8f', '#e76f51'])),
+            tooltip=['Conta', 'Tipo', 'Valor']
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_acc, use_container_width=True)
+
+        # Gráfico de participação percentual das receitas por conta
+        df_receita_pct = df_accounts_group[["Conta", "Receitas"]].copy()
+        df_receita_pct["Pct"] = (df_receita_pct["Receitas"] / df_receita_pct["Receitas"].sum()) * 100
+        chart_pie = alt.Chart(df_receita_pct).mark_arc().encode(
+            theta=alt.Theta("Receitas:Q"),
+            color=alt.Color("Conta:N"),
+            tooltip=["Conta", "Receitas", "Pct"]
+        ).properties(height=350)
+        st.altair_chart(chart_pie, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📆 Histórico por Account (Efetivado mês a mês)")
+
+        # Histórico mensal por conta
+        df_accounts["AnoMes"] = df_accounts["Data"].dt.to_period("M").astype(str)
+        pivot_acc_hist = df_accounts.pivot_table(
+            index=["AnoMes", "Conta"],
+            values="Valor",
+            columns="Tipo",
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        if "Receita" not in pivot_acc_hist.columns:
+            pivot_acc_hist["Receita"] = 0.0
+        if "Despesa" not in pivot_acc_hist.columns:
+            pivot_acc_hist["Despesa"] = 0.0
+
+        pivot_acc_hist["Saldo Líquido"] = pivot_acc_hist["Receita"] - pivot_acc_hist["Despesa"]
+
+        st.dataframe(
+            aplicar_estilo_tabela(pivot_acc_hist.style, subset=["Saldo Líquido"]),
+            use_container_width=True
+        )
+
+        # Gráfico de evolução por conta
+        chart_hist_acc = alt.Chart(pivot_acc_hist).mark_line(point=True).encode(
+            x=alt.X("AnoMes:N", title="Mês"),
+            y=alt.Y("Saldo Líquido:Q", title="Saldo Líquido (R$)"),
+            color=alt.Color("Conta:N"),
+            tooltip=["AnoMes", "Conta", "Receita", "Despesa", "Saldo Líquido"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_hist_acc, use_container_width=True)
+
+    else:
+        st.info("Nenhum lançamento efetivado disponível para análise por conta.")
+
     st.markdown("---")
+    st.markdown("### 🗓️ Histórico Consolidado por Mês") st.markdown("---")
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
     
