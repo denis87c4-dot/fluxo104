@@ -369,45 +369,136 @@ if aba == "Dashboard":
         pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
         pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
         pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
-
-        pivot_hist_fmt = pivot_hist.copy()
-        for col in ["Income", "Expense (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
-            pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-
-        st.dataframe(
-            aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]),
-            use_container_width=True
-        )
-
-        st.markdown("---")
-        st.markdown("### 📈 Gráficos Comparativos de Evolução")
+if aba == "Dashboard":
+    st.subheader("📊 Executive Dashboard")
+    
+    df = st.session_state.lancamentos
+    
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        col_g1, col_g2 = st.columns(2)
-        
-        with col_g1:
-            st.markdown("#### 1️⃣ Income vs Expense (C/C) vs Cartão")
-            df_melt_ie = pivot_hist.melt(id_vars="Mês", value_vars=["Income", "Expense (C/C)", "Passivo Cartão"], var_name="Métrica", value_name="Valor")
-            chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
-                x=alt.X('Mês:N', title='Mês'),
-                y=alt.Y('Valor:Q', title='Montante (R$)'),
-                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Income', 'Expense (C/C)', 'Passivo Cartão'], range=['#2a9d8f', '#e76f51', '#f4a261']), title='Legenda'),
-                tooltip=['Mês', 'Métrica', 'Valor']
-            ).properties(height=320).interactive()
-            st.altair_chart(chart_ie, use_container_width=True)
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
             
-        with col_g2:
-            st.markdown("#### 2️⃣ Cash Flow vs Acumulado")
-            df_melt_ca = pivot_hist.melt(id_vars="Mês", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
-            chart_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
-                x=alt.X('Mês:N', title='Mês'),
-                y=alt.Y('Valor:Q', title='Montante (R$)'),
-                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Cash Flow', 'Acumulado'], range=['#264653', '#2a9d8f']), title='Legenda'),
-                tooltip=['Mês', 'Métrica', 'Valor']
-            ).properties(height=320).interactive()
-            st.altair_chart(chart_ca, use_container_width=True)
-    else:
-        st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
+        col_f1, col_f2 = st.columns([2, 4])
+        with col_f1:
+            mes_selecionado = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, index=0)
+        
+        ano_sel, mes_sel = map(int, mes_selecionado.split("-"))
+        
+        dt_sel = datetime(ano_sel, mes_sel, 1)
+        dt_ant = dt_sel - relativedelta(months=1)
+        
+        df_mes_atual = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_sel)]
+        df_mes_ant = df[(df["Data"].dt.year == dt_ant.year) & (df["Data"].dt.month == dt_ant.month)]
+        
+        receitas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Efetivado")]["Valor"].sum()
+        receitas_ant = df_mes_ant[(df_mes_ant["Tipo"] == "Receita") & (df_mes_ant["Status"] == "Efetivado")]["Valor"].sum()
+        delta_rec = ((receitas_mes - receitas_ant) / receitas_ant * 100) if receitas_ant > 0 else 0.0
+        
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
 
+        despesas_conta_corrente = df_mes_atual[
+            (df_mes_atual["Tipo"] == "Despesa") & 
+            (df_mes_atual["Status"] == "Efetivado") & 
+            (~df_mes_atual["Conta"].isin(cartoes_nomes))
+        ]["Valor"].sum()
+
+        despesas_ant_cc = df_mes_ant[
+            (df_mes_ant["Tipo"] == "Despesa") & 
+            (df_mes_ant["Status"] == "Efetivado") & 
+            (~df_mes_ant["Conta"].isin(cartoes_nomes))
+        ]["Valor"].sum()
+        delta_desp = ((despesas_conta_corrente - despesas_ant_cc) / despesas_ant_cc * 100) if despesas_ant_cc > 0 else 0.0
+        
+        budget_despesas = df_mes_atual[(df_mes_atual["Tipo"] == "Despesa") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
+        budget_receitas = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (df_mes_atual["Status"] == "Budget")]["Valor"].sum()
+        
+        hoje_dt = pd.to_datetime(datetime.today().date())
+        df_vencidas = df[(df["Tipo"] == "Despesa") & (df["Status"] == "Budget") & (df["Data"] < hoje_dt)]
+        despesas_vencidas = df_vencidas["Valor"].sum()
+        
+        if not df_vencidas.empty:
+            descricoes_vencidas = ", ".join(df_vencidas["Descricao"].unique())
+            texto_vencidas_detalhe = f"<span style='color: #ff4b4b; font-weight: bold;'>R$ {despesas_vencidas:,.2f} ({descricoes_vencidas})</span>"
+        else:
+            texto_vencidas_detalhe = f"<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00 (Nenhuma vencida)</span>"
+            
+        saldo_liquido_real = receitas_mes - despesas_conta_corrente
+
+        df_cartoes_mes = df_mes_atual[
+            (df_mes_atual["Tipo"] == "Despesa") & 
+            (df_mes_atual["Conta"].isin(cartoes_nomes)) &
+            (df_mes_atual["Status"] == "Budget")
+        ]
+        despesas_por_cartao = df_cartoes_mes.groupby("Conta")["Valor"].sum() if not df_cartoes_mes.empty else pd.Series(dtype=float)
+        despesas_cartao_mes = df_cartoes_mes["Valor"].sum()
+
+        net_savings_rate = ((receitas_mes - despesas_conta_corrente) / receitas_mes * 100) if receitas_mes > 0 else 0.0
+        comprometimento_renda = (despesas_conta_corrente / receitas_mes * 100) if receitas_mes > 0 else 0.0
+
+        contas_liquidas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (~df_mes_atual["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        cash_ratio_val = (contas_liquidas_mes / despesas_conta_corrente) if despesas_conta_corrente > 0 else 0.0
+        burn_rate_val = abs(saldo_liquido_real) if saldo_liquido_real < 0 else 0.0
+    else:
+        df_mes_atual = pd.DataFrame()
+        receitas_mes = 0.0
+        despesas_conta_corrente = 0.0
+        despesas_cartao_mes = 0.0
+        despesas_por_cartao = pd.Series(dtype=float)
+        budget_despesas = 0.0
+        budget_receitas = 0.0
+        despesas_vencidas = 0.0
+        texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
+        delta_rec = 0.0
+        delta_desp = 0.0
+        saldo_liquido_real = 0.0
+        df_vencidas = pd.DataFrame()
+        mes_selecionado = datetime.today().strftime("%Y-%m")
+        net_savings_rate = 0.0
+        comprometimento_renda = 0.0
+        cash_ratio_val = 0.0
+        burn_rate_val = 0.0
+
+    st.markdown("---")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
+    with col2:
+        st.metric("📉 DESPESAS (C/C)", f"R$ {despesas_conta_corrente:,.2f}", delta=f"{delta_desp:+.1f}% vs mês ant.", delta_color="inverse")
+    with col3:
+        st.metric("💳 PASSIVO CARTÕES (Fatura)", f"R$ {despesas_cartao_mes:,.2f}", delta="Saldo Devedor", delta_color="inverse")
+        if not despesas_por_cartao.empty:
+            for cartao, val in despesas_por_cartao.items():
+                st.markdown(f"<small>• <b>{cartao}</b>: R$ {val:,.2f}</small>", unsafe_allow_html=True)
+    with col4:
+        st.metric("💵 SALDO LÍQUIDO REAL", f"R$ {saldo_liquido_real:,.2f}", delta="Caixa Imediato", delta_color="normal")
+
+    st.markdown("### 📌 Indicadores Executivos Adicionais")
+    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+    with col_n1:
+        st.metric("💰 TAXA DE POUPANÇA", f"{net_savings_rate:.1f}%", delta="Net Savings Rate", delta_color="normal")
+    with col_n2:
+        st.metric("📊 COMPROP. DE RENDA", f"{comprometimento_renda:.1f}%", delta="Gastos / Receitas", delta_color="inverse")
+    with col_n3:
+        st.metric("🛡️ CASH RATIO", f"{cash_ratio_val:.2f}x", delta="Liquidez Imediata", delta_color="normal")
+    with col_n4:
+        st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
+
+    st.markdown("---")
+    st.markdown("### 🏦 Controle por Account (Efetivado)")
+
+    df_accounts = df[(df["Status"] == "Efetivado")].copy()
+
+    if not df_accounts.empty:
+        # Consolidado por conta
+        df_accounts_group = df_accounts.groupby("Conta").agg({
+            "Valor": [
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
