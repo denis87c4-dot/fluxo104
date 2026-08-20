@@ -469,36 +469,31 @@ if aba == "Dashboard":
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
-    with col2:
-        st.metric("📉 DESPESAS (C/C)", f"R$ {despesas_conta_corrente:,.2f}", delta=f"{delta_desp:+.1f}% vs mês ant.", delta_color="inverse")
-    with col3:
-        st.metric("💳 PASSIVO CARTÕES (Fatura)", f"R$ {despesas_cartao_mes:,.2f}", delta="Saldo Devedor", delta_color="inverse")
-        if not despesas_por_cartao.empty:
-            for cartao, val in despesas_por_cartao.items():
-                st.markdown(f"<small>• <b>{cartao}</b>: R$ {val:,.2f}</small>", unsafe_allow_html=True)
-    with col4:
-        st.metric("💵 SALDO LÍQUIDO REAL", f"R$ {saldo_liquido_real:,.2f}", delta="Caixa Imediato", delta_color="normal")
-
-    st.markdown("### 📌 Indicadores Executivos Adicionais")
-    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
-    with col_n1:
-        st.metric("💰 TAXA DE POUPANÇA", f"{net_savings_rate:.1f}%", delta="Net Savings Rate", delta_color="normal")
-    with col_n2:
-        st.metric("📊 COMPROP. DE RENDA", f"{comprometimento_renda:.1f}%", delta="Gastos / Receitas", delta_color="inverse")
-    with col_n3:
-        st.metric("🛡️ CASH RATIO", f"{cash_ratio_val:.2f}x", delta="Liquidez Imediata", delta_color="normal")
-    with col_n4:
-        st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
-
-    st.markdown("---")
-    st.markdown("### 🏦 Controle por Account (Efetivado)")
-
-    df_accounts = df[(df["Status"] == "Efetivado")].copy()
-
-    if not df_accounts.empty:
-        # Consolidado por conta
-        df_accounts_group = df_accounts.groupby("Conta").agg({
-            "Valor": [
+if aba == "Dashboard":
+    st.subheader("📊 Executive Dashboard")
+    
+    df = st.session_state.lancamentos
+    
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_atual_padrao = datetime.today().strftime("%Y-%m")
+        if mes_atual_padrao not in meses_disponiveis:
+            meses_disponiveis.insert(0, mes_atual_padrao)
+            
+        col_f1, col_f2 = st.columns([2, 4])
+        with col_f1:
+            mes_selecionado = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, index=0)
+        
+        ano_sel, mes_sel = map(int, mes_selecionado.split("-"))
+        
+        dt_sel = datetime(ano_sel, mes_sel, 1)
+        dt_ant = dt_sel - relativedelta(months=1)
+        
+        df_mes_atual = df[(df["Data"].dt.year == ano_sel) & (df["Data
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
