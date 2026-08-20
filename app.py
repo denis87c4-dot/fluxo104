@@ -280,6 +280,62 @@ if aba == "Dashboard":
         pivot_hist = pivot_hist.rename(columns={
             "AnoMes": "Mês",
             "Income_Val": "Income",
+elif aba == "Dashboard":
+    st.subheader("📊 Executive Dashboard")
+
+    # usar df_filtrado (com filtros globais aplicados)
+    df = df_filtrado.copy()
+
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # ==================== RESUMO EXECUTIVO ====================
+        total_receitas = df[df["Tipo"] == "Receita"]["Valor"].sum()
+        total_despesas = df[df["Tipo"] == "Despesa"]["Valor"].sum()
+        total_transfer = df[df["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido = total_receitas - total_despesas
+
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+        with col_r1:
+            st.metric("🟢 Receitas", f"R$ {total_receitas:,.2f}")
+        with col_r2:
+            st.metric("🔴 Despesas", f"R$ {total_despesas:,.2f}", delta_color="inverse")
+        with col_r3:
+            st.metric("🔵 Transferências", f"R$ {total_transfer:,.2f}")
+        with col_r4:
+            st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        # ==================== INDICADORES EXECUTIVOS ====================
+        net_savings_rate = (saldo_liquido / total_receitas * 100) if total_receitas > 0 else 0.0
+        comprometimento_renda = (total_despesas / total_receitas * 100) if total_receitas > 0 else 0.0
+        cash_ratio_val = (total_receitas / total_despesas) if total_despesas > 0 else 0.0
+        burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
+
+        col_i1, col_i2, col_i3, col_i4 = st.columns(4)
+        with col_i1:
+            st.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
+        with col_i2:
+            st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
+        with col_i3:
+            st.metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x")
+        with col_i4:
+            st.metric("🔥 Burn Rate", f"R$ {burn_rate_val:,.2f}", delta_color="inverse")
+
+        st.markdown("---")
+
+        # ==================== SEU CÓDIGO ORIGINAL (mantido) ====================
+        pivot_hist = df.pivot_table(
+            index="AnoMes",
+            values=["Income_Val", "Expense_CC", "Expense_Card"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        pivot_hist = pivot_hist.rename(columns={
+            "AnoMes": "Mês",
+            "Income_Val": "Income",
             "Expense_CC": "Expense (C/C)",
             "Expense_Card": "Passivo Cartão"
         })
@@ -325,7 +381,6 @@ if aba == "Dashboard":
             st.altair_chart(chart_ca, use_container_width=True)
     else:
         st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
-
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
