@@ -326,6 +326,106 @@ if aba == "Dashboard":
     else:
         st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
+elif aba == "Dashboard Executivo Avançado":
+    import pandas as pd
+    import numpy as np
+    import altair as alt
+    from datetime import datetime
+
+    st.subheader("📊 Dashboard Executivo Avançado")
+
+    df = st.session_state.lancamentos.copy()
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    # ==================== FILTROS AVANÇADOS ====================
+    status_opcoes = ["Todos", "Efetivado", "Budget", "Vencido", "Planejado", "Cancelado"]
+    status_sel = st.multiselect("📌 Status", status_opcoes, default=["Efetivado","Budget"])
+    categorias_sel = st.multiselect("📂 Categorias", st.session_state.categorias, default=st.session_state.categorias)
+    contas_sel = st.multiselect("🏦 Contas/Cartões", df["Conta"].unique().tolist())
+    periodo_sel = st.date_input("📅 Intervalo de Datas", [])
+
+    df_filtrado = df.copy()
+    if "Todos" not in status_sel:
+        df_filtrado = df_filtrado[df_filtrado["Status"].isin(status_sel)]
+    if categorias_sel:
+        df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(categorias_sel)]
+    if contas_sel:
+        df_filtrado = df_filtrado[df_filtrado["Conta"].isin(contas_sel)]
+    if periodo_sel:
+        df_filtrado = df_filtrado[(df_filtrado["Data"] >= periodo_sel[0]) & (df_filtrado["Data"] <= periodo_sel[-1])]
+
+    # ==================== INDICADORES EXECUTIVOS ====================
+    total_entradas = df_filtrado[df_filtrado["Tipo"]=="Receita"]["Valor"].sum()
+    total_saidas = df_filtrado[df_filtrado["Tipo"]=="Despesa"]["Valor"].sum()
+    total_passivo_cartao = df_filtrado[(df_filtrado["Tipo"]=="Despesa") & (df_filtrado["Conta"].isin(st.session_state.cartoes["Nome"].tolist()))]["Valor"].sum()
+    saldo_liquido = total_entradas - total_saidas
+
+    margem_operacional = total_entradas - total_saidas
+    indice_endividamento = (total_passivo_cartao / total_entradas) if total_entradas > 0 else 0
+    net_savings_rate = (saldo_liquido / total_entradas * 100) if total_entradas > 0 else 0
+    comprometimento_renda = (total_saidas / total_entradas * 100) if total_entradas > 0 else 0
+    cash_ratio_val = (total_entradas / total_saidas) if total_saidas > 0 else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("📊 Margem Operacional", f"R$ {margem_operacional:,.2f}")
+    col2.metric("💳 Endividamento", f"{indice_endividamento:.1%}", delta="Passivo/Receita")
+    col3.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
+    col4.metric("📉 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
+
+    # ==================== RADAR FINANCEIRO ====================
+    df_radar = pd.DataFrame({
+        'Indicador': ['Taxa de Poupança', 'Comprom. Renda', 'Cash Ratio', 'Endividamento'],
+        'Valor': [net_savings_rate, comprometimento_renda, cash_ratio_val*100, indice_endividamento*100]
+    })
+
+    chart_radar = alt.Chart(df_radar).mark_line(point=True, strokeWidth=3).encode(
+        theta=alt.Theta('Indicador:N', sort=None),
+        radius=alt.Radius('Valor:Q', scale=alt.Scale(type='linear', domain=[0,100])),
+        color=alt.value('#2a9d8f')
+    ).properties(height=400)
+
+    st.markdown("### 🛡️ Radar Financeiro")
+    st.altair_chart(chart_radar, use_container_width=True)
+
+    # ==================== HEATMAP DE GASTOS ====================
+    df_heatmap = df_filtrado[df_filtrado["Tipo"]=="Despesa"].copy()
+    df_heatmap["AnoMes"] = df_heatmap["Data"].dt.to_period("M").astype(str)
+
+    pivot_heat = df_heatmap.pivot_table(
+        index="Categoria",
+        columns="AnoMes",
+        values="Valor",
+        aggfunc="sum",
+        fill_value=0.0
+    ).reset_index()
+
+    df_melt_heat = pivot_heat.melt(id_vars="Categoria", var_name="Mês", value_name="Gasto")
+
+    chart_heat = alt.Chart(df_melt_heat).mark_rect().encode(
+        x=alt.X('Mês:N', title='Mês'),
+        y=alt.Y('Categoria:N', title='Categoria'),
+        color=alt.Color('Gasto:Q', scale=alt.Scale(scheme='reds')),
+        tooltip=['Categoria', 'Mês', 'Gasto']
+    ).properties(height=500)
+
+    st.markdown("### 🔥 Heatmap de Gastos")
+    st.altair_chart(chart_heat, use_container_width=True)
+
+    # ==================== GRÁFICO DE PARETO ====================
+    df_pareto = df_filtrado[df_filtrado["Tipo"]=="Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+    df_pareto = df_pareto.sort_values(by="Valor", ascending=False)
+    df_pareto["Acumulado_%"] = (df_pareto["Valor"].cumsum() / df_pareto["Valor"].sum()) * 100
+
+    base = alt.Chart(df_pareto).encode(x=alt.X('Categoria:N', sort='-y', title='Categoria'))
+    bar = base.mark_bar(color='#264653').encode(y=alt.Y('Valor:Q', title='Gasto Total (R$)'), tooltip=['Categoria','Valor'])
+    line = base.mark_line(strokeWidth=3, color='#e76f51', point=True).encode(y=alt.Y('Acumulado_%:Q', title='Acumulado (%)', scale=alt.Scale(domain=[0,105])))
+
+    chart_pareto = alt.layer(bar, line).resolve_scale(y='independent').properties(height=400).interactive()
+
+    st.markdown("### 📈 Gráfico de Pareto (80/20)")
+    st.altair_chart(chart_pareto, use_container_width=True)
+
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
