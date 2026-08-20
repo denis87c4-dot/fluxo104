@@ -290,72 +290,6 @@ if aba == "Dashboard":
         ).properties(height=350)
         st.altair_chart(chart_pie, use_container_width=True)
 
-        st.markdown("---")
-        st.markdown("### 📆 Histórico por Account (Efetivado mês a mês)")
-
-        # Histórico mensal por conta
-        df_accounts["AnoMes"] = df_accounts["Data"].dt.to_period("M").astype(str)
-        pivot_acc_hist = df_accounts.pivot_table(
-            index=["AnoMes", "Conta"],
-            values="Valor",
-            columns="Tipo",
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
-
-        if "Receita" not in pivot_acc_hist.columns:
-            pivot_acc_hist["Receita"] = 0.0
-        if "Despesa" not in pivot_acc_hist.columns:
-            pivot_acc_hist["Despesa"] = 0.0
-
-        pivot_acc_hist["Saldo Líquido"] = pivot_acc_hist["Receita"] - pivot_acc_hist["Despesa"]
-
-        st.dataframe(
-            aplicar_estilo_tabela(pivot_acc_hist.style, subset=["Saldo Líquido"]),
-            use_container_width=True
-        )
-
-        # Gráfico de evolução por conta
-        chart_hist_acc = alt.Chart(pivot_acc_hist).mark_line(point=True).encode(
-            x=alt.X("AnoMes:N", title="Mês"),
-            y=alt.Y("Saldo Líquido:Q", title="Saldo Líquido (R$)"),
-            color=alt.Color("Conta:N"),
-            tooltip=["AnoMes", "Conta", "Receita", "Despesa", "Saldo Líquido"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_hist_acc, use_container_width=True)
-
-    else:
-        st.info("Nenhum lançamento efetivado disponível para análise por conta.")
-
-    st.markdown("---")
-    st.markdown("### 🗓️ Histórico Consolidado por Mês") st.markdown("---")
-    st.markdown("### 🗓️ Histórico Consolidado por Mês")
-    st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
-    
-    if not df.empty:
-        status_opcoes = ["Todos", "Efetivado", "Budget"]
-        status_selecionado = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-
-        df_hist = df.copy()
-        cartoes_nomes_hist = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-
-        if status_selecionado != "Todos":
-            df_hist = df_hist[df_hist["Status"] == status_selecionado]
-
-        df_hist["Expense_CC"] = df_hist.apply(
-            lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_hist else 0.0, axis=1
-        )
-        df_hist["Expense_Card"] = df_hist.apply(
-            lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes_hist else 0.0, axis=1
-        )
-        df_hist["Income_Val"] = df_hist.apply(
-            lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1
-        )
-
-        pivot_hist = df_hist.pivot_table(
-            index="AnoMes",
-            values=["Income_Val", "Expense_CC", "Expense_Card"],
-            aggfunc="sum",
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
@@ -423,65 +357,7 @@ if aba == "Dashboard":
             (df_mes_atual["Conta"].isin(cartoes_nomes)) &
             (df_mes_atual["Status"] == "Budget")
         ]
-        despesas_por_cartao = df_cartoes_mes.groupby("Conta")["Valor"].sum() if not df_cartoes_mes.empty else pd.Series(dtype=float)
-        despesas_cartao_mes = df_cartoes_mes["Valor"].sum()
-
-        net_savings_rate = ((receitas_mes - despesas_conta_corrente) / receitas_mes * 100) if receitas_mes > 0 else 0.0
-        comprometimento_renda = (despesas_conta_corrente / receitas_mes * 100) if receitas_mes > 0 else 0.0
-
-        contas_liquidas_mes = df_mes_atual[(df_mes_atual["Tipo"] == "Receita") & (~df_mes_atual["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        cash_ratio_val = (contas_liquidas_mes / despesas_conta_corrente) if despesas_conta_corrente > 0 else 0.0
-        burn_rate_val = abs(saldo_liquido_real) if saldo_liquido_real < 0 else 0.0
-    else:
-        df_mes_atual = pd.DataFrame()
-        receitas_mes = 0.0
-        despesas_conta_corrente = 0.0
-        despesas_cartao_mes = 0.0
-        despesas_por_cartao = pd.Series(dtype=float)
-        budget_despesas = 0.0
-        budget_receitas = 0.0
-        despesas_vencidas = 0.0
-        texto_vencidas_detalhe = "<span style='color: #2a9d8f; font-weight: bold;'>R$ 0,00</span>"
-        delta_rec = 0.0
-        delta_desp = 0.0
-        saldo_liquido_real = 0.0
-        df_vencidas = pd.DataFrame()
-        mes_selecionado = datetime.today().strftime("%Y-%m")
-        net_savings_rate = 0.0
-        comprometimento_renda = 0.0
-        cash_ratio_val = 0.0
-        burn_rate_val = 0.0
-
-    st.markdown("---")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("📈 RECEITAS DO MÊS", f"R$ {receitas_mes:,.2f}", delta=f"{delta_rec:+.1f}% vs mês ant.")
-if aba == "Dashboard":
-    st.subheader("📊 Executive Dashboard")
-    
-    df = st.session_state.lancamentos
-    
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-        
-        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
-        mes_atual_padrao = datetime.today().strftime("%Y-%m")
-        if mes_atual_padrao not in meses_disponiveis:
-            meses_disponiveis.insert(0, mes_atual_padrao)
-            
-        col_f1, col_f2 = st.columns([2, 4])
-        with col_f1:
-            mes_selecionado = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, index=0)
-        
-        ano_sel, mes_sel = map(int, mes_selecionado.split("-"))
-        
-        dt_sel = datetime(ano_sel, mes_sel, 1)
-        dt_ant = dt_sel - relativedelta(months=1)
-        
-        df_mes_atual = df[(df["Data"].dt.year == ano_sel) & (df["Data
+        despesas_por_cartao = df_cartoes_mes.groupby("Conta")
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
