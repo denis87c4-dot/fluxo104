@@ -415,6 +415,30 @@ elif aba == "Dashboard Executivo Avançado":
         value=(datetime.date.today().replace(day=1), datetime.date.today())
     )
 
+elif aba == "Dashboard Executivo Avançado":
+    import pandas as pd
+    import numpy as np
+    import altair as alt
+    import datetime
+
+    st.subheader("📊 Dashboard Executivo Avançado")
+
+    df = st.session_state.lancamentos.copy()
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    # ==================== FILTROS AVANÇADOS ====================
+    status_opcoes = ["Todos", "Efetivado", "Budget", "Vencido", "Planejado", "Cancelado"]
+    status_sel = st.multiselect("📌 Status", status_opcoes, default=["Efetivado","Budget"])
+    categorias_sel = st.multiselect("📂 Categorias", st.session_state.categorias, default=st.session_state.categorias)
+    contas_sel = st.multiselect("🏦 Contas/Cartões", df["Conta"].unique().tolist())
+
+    # Intervalo de datas (mês atual: do primeiro dia até hoje)
+    periodo_sel = st.date_input(
+        "📅 Intervalo de Datas",
+        value=(datetime.date.today().replace(day=1), datetime.date.today())
+    )
+
     df_filtrado = df.copy()
     if "Todos" not in status_sel:
         df_filtrado = df_filtrado[df_filtrado["Status"].isin(status_sel)]
@@ -423,12 +447,10 @@ elif aba == "Dashboard Executivo Avançado":
     if contas_sel:
         df_filtrado = df_filtrado[df_filtrado["Conta"].isin(contas_sel)]
 
-    # Converter Data para date puro
-    df_filtrado["Data"] = pd.to_datetime(df_filtrado["Data"], errors="coerce").dt.date
-
-    # Filtrar pelo intervalo
+    # Filtrar pelo intervalo (convertendo para datetime)
     if isinstance(periodo_sel, tuple) and len(periodo_sel) == 2:
-        inicio, fim = periodo_sel
+        inicio = pd.to_datetime(periodo_sel[0])
+        fim = pd.to_datetime(periodo_sel[1])
         df_filtrado = df_filtrado[
             (df_filtrado["Data"] >= inicio) &
             (df_filtrado["Data"] <= fim)
@@ -469,7 +491,7 @@ elif aba == "Dashboard Executivo Avançado":
 
     # ==================== HEATMAP DE GASTOS ====================
     df_heatmap = df_filtrado[df_filtrado["Tipo"]=="Despesa"].copy()
-    df_heatmap["AnoMes"] = pd.to_datetime(df_heatmap["Data"]).to_period("M").astype(str)
+    df_heatmap["AnoMes"] = pd.to_datetime(df_heatmap["Data"]).dt.to_period("M").astype(str)
 
     pivot_heat = df_heatmap.pivot_table(
         index="Categoria",
