@@ -246,6 +246,58 @@ if aba == "Dashboard":
     with col_n4:
         st.metric("🔥 BURN RATE", f"R$ {burn_rate_val:,.2f}", delta="Queima de Caixa", delta_color="inverse")
 
+st.markdown("---")
+st.markdown("### 🏦 Controle de Fluxo e Saúde Financeira")
+
+# 1. Filtro base de dados efetivados
+df_efetivado = df_mes_atual[df_mes_atual["Status"] == "Efetivado"]
+
+if not df_efetivado.empty:
+    # 2. Criação da tabela de Liquidez por Conta
+    resumo_contas = df_efetivado.pivot_table(
+        index="Conta", 
+        columns="Tipo", 
+        values="Valor", 
+        aggfunc="sum", 
+        fill_value=0
+    ).reindex(columns=["Receita", "Despesa", "Transferência"], fill_value=0)
+    
+    resumo_contas["Saldo Líquido Efetivado"] = (
+        resumo_contas["Receita"] - resumo_contas["Despesa"]
+    )
+    
+    # Exibe a tabela
+    st.dataframe(
+        resumo_contas.style.format("R$ {:,.2f}").map(colorir_negativos, subset=["Saldo Líquido Efetivado"]),
+        use_container_width=True
+    )
+
+    # 3. Cálculo da Surpresa: Health Score
+    total_efetivado_cc = resumo_contas["Saldo Líquido Efetivado"].sum()
+    total_budget_pendente = df_mes_atual[(df_mes_atual["Status"] == "Budget") & (df_mes_atual["Tipo"] == "Despesa")]["Valor"].sum()
+    
+    # Layout de colunas para o Health Score ficar elegante
+    col1, col2 = st.columns([1, 2])
+    
+    if total_budget_pendente > 0:
+        health_score = (total_efetivado_cc / total_budget_pendente) * 100
+        cor = "#2a9d8f" if health_score >= 100 else "#ff4b4b"
+        
+        with col1:
+            st.metric("Health Score", f"{health_score:.1f}%")
+        with col2:
+            st.progress(min(int(health_score), 100) / 100)
+            if health_score < 100:
+                st.caption("⚠️ Alerta: Saldo efetivado não cobre o budget total.")
+            else:
+                st.caption("✅ Excelente: Saldo efetivado cobre todas as obrigações.")
+    else:
+        st.info("Nenhum budget pendente para comparação.")
+
+else:
+    st.warning("Nenhum lançamento efetivado no período para calcular o controle por Account.")
+
+    
     st.markdown("---")
     st.markdown("### 🗓️ Histórico Consolidado por Mês")
     st.markdown("Tabela geral contemplando **Income**, **Expense (C/C)**, **Passivo Cartões** e **Cash Flow** ordenados temporalmente.")
