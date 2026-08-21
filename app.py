@@ -326,6 +326,109 @@ if aba == "Dashboard":
     else:
         st.info("Nenhum lançamento registrado para exibir a tabela consolidada e os gráficos.")
 
+elif aba == "Dashboard 2":
+    st.subheader("📊 Dashboard 2 - Painel Inteligente com Filtros")
+    st.markdown("Explore seus dados com filtros dinâmicos e gráficos avançados.")
+
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        # Preparação dos dados
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros
+        col_f1, col_f2 = st.columns([2, 2])
+        with col_f1:
+            status_opcoes = ["Todos", "Efetivado", "Budget"]
+            status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+        with col_f2:
+            meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+            mes_sel = st.selectbox("📅 Selecione o Mês", meses_disponiveis, index=0)
+
+        # Aplicar filtros
+        ano_sel, mes_num = map(int, mes_sel.split("-"))
+        df_filtrado = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_num)]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        # ==================== BLOCO 1: KPIs ====================
+        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        saidas_cc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (~df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        passivo_cartao = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido = entradas - saidas_cc
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas (C/C)", f"R$ {saidas_cc:,.2f}", delta_color="inverse")
+        col3.metric("💳 Passivo Cartão", f"R$ {passivo_cartao:,.2f}", delta_color="inverse")
+        col4.metric("🔵 Transferências", f"R$ {transferencias:,.2f}")
+        col5.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+
+        # ==================== BLOCO 2: Distribuição por Categoria ====================
+        st.markdown("### 📂 Distribuição de Despesas por Categoria")
+        df_cat = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+        if not df_cat.empty:
+            chart_cat = alt.Chart(df_cat).mark_bar(color="#e76f51").encode(
+                x=alt.X("Categoria:N", sort="-y"),
+                y=alt.Y("Valor:Q", title="Total (R$)"),
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_cat, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa registrada neste filtro.")
+
+        st.markdown("---")
+
+        # ==================== BLOCO 3: Evolução Temporal ====================
+        st.markdown("### 📈 Evolução Temporal (Receitas vs Despesas vs Cartão)")
+        df_filtrado["Expense_CC"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes else 0.0, axis=1)
+        df_filtrado["Expense_Card"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
+        df_filtrado["Income_Val"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+
+        pivot_temp = df_filtrado.pivot_table(index="AnoMes", values=["Income_Val", "Expense_CC", "Expense_Card"], aggfunc="sum").reset_index()
+        pivot_temp = pivot_temp.rename(columns={"Income_Val": "Receita", "Expense_CC": "Despesa", "Expense_Card": "Cartão"})
+
+        df_melt = pivot_temp.melt(id_vars="AnoMes", var_name="Métrica", value_name="Valor")
+        chart_temp = alt.Chart(df_melt).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Valor:Q", color="Métrica:N", tooltip=["AnoMes", "Métrica", "Valor"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_temp, use_container_width=True)
+
+        st.markdown("---")
+
+        # ==================== BLOCO 4: Cash Flow vs Acumulado ====================
+        st.markdown("### 💵 Cash Flow vs Acumulado")
+        pivot_temp["Cash Flow"] = pivot_temp["Receita"] - pivot_temp["Despesa"]
+        pivot_temp["Acumulado"] = pivot_temp["Cash Flow"].cumsum()
+
+        df_melt_cf = pivot_temp.melt(id_vars="AnoMes", value_vars=["Cash Flow", "Acumulado"], var_name="Métrica", value_name="Valor")
+        chart_cf = alt.Chart(df_melt_cf).mark_line(point=True, strokeWidth=3).encode(
+            x="AnoMes:N", y="Valor:Q", color="Métrica:N", tooltip=["AnoMes", "Métrica", "Valor"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_cf, use_container_width=True)
+
+        st.markdown("---")
+
+        # ==================== BLOCO 5: Top 5 Categorias ====================
+        st.markdown("### 🏆 Top 5 Categorias de Gastos")
+        df_top5 = df_cat.sort_values("Valor", ascending=False).head(5)
+        chart_top5 = alt.Chart(df_top5).mark_bar(color="#264653").encode(
+            x=alt.X("Valor:Q", title="Total (R$)"),
+            y=alt.Y("Categoria:N", sort="-x"),
+            tooltip=["Categoria", "Valor"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_top5, use_container_width=True)
+
+    else:
+        st.info("Nenhum lançamento cadastrado para exibir no Dashboard 2.")
+
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
