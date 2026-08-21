@@ -850,21 +850,6 @@ elif aba == "Monthly Audit":
             
             tot_b = df_budget_m.sum()
             tot_e = df_entry_m.sum()
-            tot_dif = tot_b - tot_e
-            
-            st.markdown("---")
-            ac1, ac2, ac3, ac4 = st.columns(4)
-            ac1.metric("📋 Total Budgetado", f"R$ {tot_b:,.2f}")
-            ac2.metric("💳 Total Realizado", f"R$ {tot_e:,.2f}", delta=f"{((tot_e-tot_b)/tot_b*100 if tot_b>0 else 0):+.1f}% vs Budget", delta_color="inverse")
-            ac3.metric("🎯 Saldo Orçamentário", f"R$ {tot_dif:,.2f}", delta="Sobrou / Falta", delta_color="normal")
-            ac4.metric("📊 Taxa de Execução", f"{(tot_e/tot_b*100 if tot_b>0 else 0):.1f}%")
-            
-            st.markdown("---")
-            st.markdown(f"### 📋 Tabela Analítica Consolidada por Categoria ({mes_audit_selecionado})")
-            
-            df_audit_fmt = df_audit_res.copy()
-            df_audit_fmt["Budget"] = df_audit_fmt["Budget"].apply(lambda x: f"R$ {x:,.2f}")
-            df_audit_fmt["Realizado (Entry)"] = df_audit_fmt["Realizado (Entry)"].apply(lambda x: f"R$ {x:,.2f}")
 
 elif aba == "Monthly Audit":
     st.subheader("🧾 Monthly Audit - Auditoria Profissional")
