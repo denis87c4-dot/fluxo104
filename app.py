@@ -850,15 +850,107 @@ elif aba == "Monthly Audit":
 
         # Indicadores avançados
         st.markdown("### 📌 Indicadores Executivos")
+
+elif aba == "Monthly Audit":
+    st.subheader("🧾 Monthly Audit - Auditoria Completa e Profissional")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        with col_f1:
+            mes_sel = st.selectbox("📅 Mês", sorted(df["AnoMes"].unique(), reverse=True))
+        with col_f2:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
+        with col_f3:
+            contas_disp = ["Todas"] + df["Conta"].unique().tolist()
+            conta_sel = st.selectbox("🏦 Conta/Cartão", contas_disp)
+        with col_f4:
+            categorias_disp = ["Todas"] + df["Categoria"].unique().tolist()
+            cat_sel = st.selectbox("📂 Categoria", categorias_disp)
+
+        ano, mes = map(int, mes_sel.split("-"))
+        df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+        if conta_sel != "Todas":
+            df_filtrado = df_filtrado[df_filtrado["Conta"] == conta_sel]
+        if cat_sel != "Todas":
+            df_filtrado = df_filtrado[df_filtrado["Categoria"] == cat_sel]
+
+        # Resumo executivo discriminado
+        entradas_efet = df_filtrado[(df_filtrado["Tipo"] == "Receita") & (df_filtrado["Status"] == "Efetivado")]["Valor"].sum()
+        saidas_efet = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Status"] == "Efetivado")]["Valor"].sum()
+        entradas_budget = df_filtrado[(df_filtrado["Tipo"] == "Receita") & (df_filtrado["Status"] == "Budget")]["Valor"].sum()
+        saidas_budget = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Status"] == "Budget")]["Valor"].sum()
+        saldo_liquido = entradas_efet - saidas_efet
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("🟢 Entradas Efetivado", f"R$ {entradas_efet:,.2f}")
+        col2.metric("🔴 Saídas Efetivado", f"R$ {saidas_efet:,.2f}", delta_color="inverse")
+        col3.metric("🟢 Entradas Budget", f"R$ {entradas_budget:,.2f}")
+        col4.metric("🔴 Saídas Budget", f"R$ {saidas_budget:,.2f}", delta_color="inverse")
+        col5.metric("💰 Saldo Líquido (Efetivado)", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+
+        # Comparativo lado a lado
+        st.markdown("### 📈 Comparativo Entradas vs Saídas (Efetivado vs Budget)")
+        df_comp = pd.DataFrame({
+            "Tipo": ["Entradas Efetivado", "Saídas Efetivado", "Entradas Budget", "Saídas Budget"],
+            "Valor": [entradas_efet, saidas_efet, entradas_budget, saidas_budget]
+        })
+        chart_comp = alt.Chart(df_comp).mark_bar().encode(
+            x="Tipo:N", y="Valor:Q", color="Tipo:N", tooltip=["Tipo", "Valor"]
+        ).properties(height=350)
+        st.altair_chart(chart_comp, use_container_width=True)
+
+        st.markdown("---")
+
+        # Resumo por Account
+        st.markdown("### 📂 Resumo de Despesas por Account")
+        df_acc = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby(["Conta", "Status"])["Valor"].sum().reset_index()
+        st.dataframe(df_acc, use_container_width=True)
+
+        # Detalhamento de Cartões
+        st.markdown("### 💳 Detalhamento de Cartões (Descrição)")
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+        df_card = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]
+        if not df_card.empty:
+            st.dataframe(df_card[["Conta", "Descricao", "Valor", "Status", "Data"]], use_container_width=True)
+        else:
+            st.info("Nenhuma despesa de cartão registrada.")
+
+        st.markdown("---")
+
+        # Resumo por Categoria
+        st.markdown("### 📊 Despesas por Categoria (Efetivado vs Budget)")
+        df_cat = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby(["Categoria", "Status"])["Valor"].sum().reset_index()
+        chart_cat = alt.Chart(df_cat).mark_bar().encode(
+            x="Categoria:N", y="Valor:Q", color="Status:N", tooltip=["Categoria", "Status", "Valor"]
+        ).properties(height=350)
+        st.altair_chart(chart_cat, use_container_width=True)
+
+        st.markdown("---")
+
+        # Tabela consolidada
+        st.markdown("### 📄 Tabela Consolidada de Lançamentos")
+        df_exib = df_filtrado[["Tipo", "Descricao", "Categoria", "Conta", "Valor", "Status", "Data"]].copy()
+        df_exib["Valor"] = df_exib["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(df_exib, use_container_width=True)
+
+        st.markdown("---")
+
+        # Indicadores avançados
+        st.markdown("### 📌 Indicadores Executivos")
         net_savings_rate = (saldo_liquido / entradas_efet * 100) if entradas_efet > 0 else 0.0
         comprometimento_renda = (saidas_efet / entradas_efet * 100) if entradas_efet > 0 else 0.0
         cash_ratio_val = (entradas_efet / saidas_efet) if saidas_efet > 0 else 0.0
         burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
-
-        st.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
-        st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
-        st.metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x")
-        st.metric("🔥 Burn Rate", f"R$ {burn_rate_val:,.2f}", delta_color="inverse")
 
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
