@@ -863,38 +863,89 @@ elif aba == "Monthly Audit":
             
             st.markdown("---")
             ac1, ac2, ac3, ac4 = st.columns(4)
-            ac1.metric("📋 Total Budgetado", f"R$ {tot_b:,.2f}")
-            ac2.metric("💳 Total Realizado", f"R$ {tot_e:,.2f}", delta=f"{((tot_e-tot_b)/tot_b*100 if tot_b>0 else 0):+.1f}% vs Budget", delta_color="inverse")
-            ac3.metric("🎯 Saldo Orçamentário", f"R$ {tot_dif:,.2f}", delta="Sobrou / Falta", delta_color="normal")
-            ac4.metric("📊 Taxa de Execução", f"{(tot_e/tot_b*100 if tot_b>0 else 0):.1f}%")
-            
-            st.markdown("---")
-            st.markdown(f"### 📋 Tabela Analítica Consolidada por Categoria ({mes_audit_selecionado})")
-            
-            df_audit_fmt = df_audit_res.copy()
-            df_audit_fmt["Budget"] = df_audit_fmt["Budget"].apply(lambda x: f"R$ {x:,.2f}")
-            df_audit_fmt["Realizado (Entry)"] = df_audit_fmt["Realizado (Entry)"].apply(lambda x: f"R$ {x:,.2f}")
-            df_audit_fmt["Diferença (R$)"] = df_audit_fmt["Diferença (R$)"].apply(lambda x: f"R$ {x:,.2f}")
-            
-            st.dataframe(aplicar_estilo_tabela(df_audit_fmt.style, subset=["Diferença (R$)"]), use_container_width=True)
-            
-            st.markdown("---")
-            st.markdown("### 🔍 Drill-Down: Inspecionar Lançamentos da Categoria")
-            cat_selecionada_drill = st.selectbox("Escolha uma categoria para abrir o detalhamento transacional:", todas_cats, key="drill_cat")
-            
-            if cat_selecionada_drill:
-                df_drill = df_mes_audit[df_mes_audit["Categoria"] == cat_selecionada_drill]
-                if not df_drill.empty:
-                    df_drill_show = df_drill[["Status", "Descricao", "Conta", "Valor", "Data", "Parcela"]].copy()
-                    df_drill_show["Valor"] = df_drill_show["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-                    st.dataframe(df_drill_show, use_container_width=True)
-                else:
-                    st.info(f"Nenhum lançamento encontrado para a categoria {cat_selecionada_drill} no período.")
-        else:
-            st.info(f"Nenhuma despesa registrada para o período de {mes_audit_selecionado}.")
-    else:
-        st.info("Nenhum lançamento cadastrado no sistema.")
 
+elif aba == "Monthly Audit":
+    st.subheader("📒 Monthly Audit - Auditoria por Account")
+    st.markdown("Visão robusta comparando **Budget vs Efetivado** por cada conta, com múltiplos filtros.")
+
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros principais
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+            mes_sel = st.selectbox("📅 Selecione o Mês", meses_disponiveis, index=0)
+        with col_f2:
+            status_opcoes = ["Todos", "Efetivado", "Budget"]
+            status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
+
+        ano_sel, mes_num = map(int, mes_sel.split("-"))
+        df_mes = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_num)]
+        if status_sel != "Todos":
+            df_mes = df_mes[df_mes["Status"] == status_sel]
+
+        # Filtros adicionais
+        col_f3, col_f4, col_f5 = st.columns(3)
+        with col_f3:
+            categoria_sel = st.selectbox("📂 Categoria", ["Todas"] + st.session_state.categorias)
+        with col_f4:
+            conta_sel = st.selectbox("🏦 Conta", ["Todas"] + df_mes["Conta"].unique().tolist())
+        with col_f5:
+            tipo_sel = st.selectbox("🔎 Tipo", ["Todos", "Receita", "Despesa", "Transferência"])
+
+        if categoria_sel != "Todas":
+            df_mes = df_mes[df_mes["Categoria"] == categoria_sel]
+        if conta_sel != "Todas":
+            df_mes = df_mes[df_mes["Conta"] == conta_sel]
+        if tipo_sel != "Todos":
+            df_mes = df_mes[df_mes["Tipo"] == tipo_sel]
+
+        # Filtro por faixa de valor
+        if not df_mes.empty:
+            valor_min, valor_max = st.slider("💵 Faixa de Valor", 
+                                             min_value=float(df_mes["Valor"].min()), 
+                                             max_value=float(df_mes["Valor"].max()), 
+                                             value=(float(df_mes["Valor"].min()), float(df_mes["Valor"].max())))
+            df_mes = df_mes[(df_mes["Valor"] >= valor_min) & (df_mes["Valor"] <= valor_max)]
+
+        # Auditoria por Conta
+        if not df_mes.empty:
+            audit_table = df_mes.groupby(["Conta", "Tipo", "Status"])["Valor"].sum().reset_index()
+            pivot_audit = audit_table.pivot_table(
+                index="Conta",
+                columns=["Tipo", "Status"],
+                values="Valor",
+                aggfunc="sum",
+                fill_value=0.0
+            )
+            pivot_audit.columns = [f"{tipo}_{status}" for tipo, status in pivot_audit.columns]
+            pivot_audit = pivot_audit.reset_index()
+
+            # Formatar valores
+            for col in pivot_audit.columns[1:]:
+                pivot_audit[col] = pivot_audit[col].apply(lambda x: f"R$ {x:,.2f}")
+
+            st.dataframe(aplicar_estilo_tabela(pivot_audit.style), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 📊 Gráfico de Auditoria por Conta")
+            df_plot = audit_table.groupby(["Conta", "Status"])["Valor"].sum().reset_index()
+            chart = alt.Chart(df_plot).mark_bar().encode(
+                x="Conta:N",
+                y="Valor:Q",
+                color="Status:N",
+                tooltip=["Conta", "Status", "Valor"]
+            ).properties(height=350).interactive()
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Nenhum lançamento encontrado com os filtros aplicados.")
+    else:
+        st.info("Nenhum lançamento cadastrado para auditoria.")
 
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
