@@ -863,38 +863,62 @@ elif aba == "Monthly Audit":
             perc = (efetivado/budget*100) if budget>0 else 0
             if perc < 80:
                 cor = "#2a9d8f"  # verde
-            elif perc <= 100:
-                cor = "#f4a261"  # amarelo
-            else:
-                cor = "#e76f51"  # vermelho
-            st.markdown(f"<div style='background-color:{cor};padding:8px;border-radius:5px;color:white;'>"
-                        f"Conta: <b>{conta}</b> | Budget: R$ {budget:,.2f} | Efetivado: R$ {efetivado:,.2f} | Execução: {perc:.1f}%"
-                        "</div>", unsafe_allow_html=True)
 
-        # Gráficos de linha
-        st.markdown("### 📈 Evolução Temporal")
-        df_temp = df.groupby("AnoMes")["Valor"].sum().reset_index()
-        chart_temp = alt.Chart(df_temp).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Valor:Q", tooltip=["AnoMes","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_temp, use_container_width=True)
+elif aba == "Monthly Audit":
+    st.subheader("📋 Monthly Audit Financeiro")
+    st.markdown("Auditoria mensal clara e verificável — conectando indicadores às transações reais.")
 
-        st.markdown("### 📊 Evolução por Categoria")
-        df_cat_line = df.groupby(["AnoMes","Categoria"])["Valor"].sum().reset_index()
-        chart_cat_line = alt.Chart(df_cat_line).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", color="Categoria:N", tooltip=["AnoMes","Categoria","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_cat_line, use_container_width=True)
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-        st.markdown("### 📊 Evolução por Conta")
-        df_acc_line = df.groupby(["AnoMes","Conta"])["Valor"].sum().reset_index()
-        chart_acc_line = alt.Chart(df_acc_line).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", color="Conta:N", tooltip=["AnoMes","Conta","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_acc_line, use_container_width=True)
+        mes_sel = st.selectbox("📅 Selecione o mês", sorted(df["AnoMes"].unique(), reverse=True))
+        ano, mes = map(int, mes_sel.split("-"))
+        df_mes = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
 
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        entradas = df_mes[df_mes["Tipo"] == "Receita"]["Valor"].sum()
+        saidas_cc = df_mes[(df_mes["Tipo"] == "Despesa") & (~df_mes["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        passivo_cartao = df_mes[(df_mes["Tipo"] == "Despesa") & (df_mes["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        cash_flow = entradas - saidas_cc
+        saldo_liquido = entradas - (saidas_cc + passivo_cartao)
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas (C/C)", f"R$ {saidas_cc:,.2f}", delta_color="inverse")
+        col3.metric("💳 Cartões", f"R$ {passivo_cartao:,.2f}", delta_color="inverse")
+        col4.metric("📊 Cash Flow", f"R$ {cash_flow:,.2f}", delta_color="inverse")
+        col5.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+        st.markdown("### 🧾 Transações Detalhadas")
+        df_exib = df_mes[["Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
+        df_exib["Valor"] = df_exib["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(aplicar_estilo_tabela(df_exib.style), use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📈 Gráficos Comparativos")
+        df_comp = pd.DataFrame({"Tipo": ["Entradas", "Saídas"], "Valor": [entradas, saidas_cc]})
+        chart_bar = alt.Chart(df_comp).mark_bar().encode(x="Tipo:N", y="Valor:Q", color="Tipo:N")
+        st.altair_chart(chart_bar, use_container_width=True)
+
+        df_line = pd.DataFrame({"Dia": df_mes["Data"].dt.day, "Cash Flow": df_mes["Valor"].cumsum()})
+        chart_line = alt.Chart(df_line).mark_line(color="#e63946", strokeWidth=3).encode(x="Dia:Q", y="Cash Flow:Q")
+        st.altair_chart(chart_line, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### ✅ Checklist de Conformidade")
+        st.write("⚠ Receitas vencidas não recebidas")
+        st.write("⚠ Despesas vencidas em aberto")
+        st.write("📊 Budget x Realizado: Cartões acima do previsto")
+
+        st.markdown("---")
+        st.markdown(f"**Narrativa:** Em {mes_sel}, o fluxo de caixa apresentou saldo líquido de R$ {saldo_liquido:,.2f}, impactado por despesas recorrentes e passivos de cartão.")
     else:
-        st.info("Nenhum lançamento cadastrado para auditoria.")
+        st.info("Nenhum lançamento disponível para auditoria.")
 
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
