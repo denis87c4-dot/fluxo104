@@ -1600,7 +1600,7 @@ elif aba == "IA":
         st.write(f"- O fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. Isso indica {'resiliência financeira' if saldo_liquido>0 else 'fragilidade financeira'} no período.")
         st.write(f"- O comprometimento da renda está em {comprometimento_renda:.1f}%. {'Alto risco, reduz flexibilidade.' if comprometimento_renda>70 else 'Nível aceitável, permite margem de manobra.'}")
         st.write(f"- A taxa de poupança está em {taxa_poupanca:.1f}%. {'Baixa capacidade de acumulação de reservas.' if taxa_poupanca<10 else 'Boa capacidade de acumular reservas.'}")
-        if len(d
+        if len(d) 
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
