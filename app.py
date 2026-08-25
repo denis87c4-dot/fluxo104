@@ -1372,15 +1372,28 @@ elif aba == "Statistical 3":
         with col_f1:
             status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="stat3_status")
         with col_f2:
-            periodo_sel = st.selectbox("📅 Horizonte", ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses"], key="stat3_periodo")
+            periodo_sel = st.selectbox("📅 Horizonte", ["Mensal", "Último mês", "Próximos 3 meses", "Próximos 6 meses", "Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses"], key="stat3_periodo")
 
         # Definir horizonte
-        meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
-        horizonte = meses_map[periodo_sel]
-
         ultimo_mes = df["Data"].max()
-        inicio_periodo = ultimo_mes - pd.DateOffset(months=horizonte)
-        df_filtrado = df[df["Data"] >= inicio_periodo]
+        if periodo_sel == "Mensal":
+            mes_sel = st.selectbox("Selecione o mês", sorted(df["AnoMes"].unique(), reverse=True))
+            ano, mes = map(int, mes_sel.split("-"))
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Último mês":
+            ano, mes = ultimo_mes.year, ultimo_mes.month
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Próximos 3 meses":
+            fim = ultimo_mes + relativedelta(months=3)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        elif periodo_sel == "Próximos 6 meses":
+            fim = ultimo_mes + relativedelta(months=6)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        else:
+            meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
+            horizonte = meses_map[periodo_sel]
+            inicio_periodo = ultimo_mes - pd.DateOffset(months=horizonte)
+            df_filtrado = df[df["Data"] >= inicio_periodo]
 
         if status_sel != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
@@ -1406,7 +1419,7 @@ elif aba == "Statistical 3":
         y_vals = pivot["CashFlow"].values
         if len(y_vals) > 1:
             a, b = np.polyfit(x_vals, y_vals, 1)
-            futuros = 6  # próximos 6 meses
+            futuros = 6
             proj_x = np.arange(len(pivot), len(pivot) + futuros)
             proj_y = a * proj_x + b
             proj_periodos = [(ultimo_mes + relativedelta(months=i)).strftime("%Y-%m") for i in range(1, futuros+1)]
@@ -1427,13 +1440,6 @@ elif aba == "Statistical 3":
         st.altair_chart(chart_trend, use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 🔮 Cenários Futuros")
-        if not df_proj.empty:
-            st.dataframe(df_proj, use_container_width=True)
-        else:
-            st.info("Dados insuficientes para gerar projeções.")
-
-        st.markdown("---")
         st.markdown("### 📊 Volatilidade das Despesas (Scatter Plot)")
         df_vol = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
         if not df_vol.empty:
@@ -1443,8 +1449,6 @@ elif aba == "Statistical 3":
                 tooltip=["AnoMes", "Valor"]
             ).properties(height=350).interactive()
             st.altair_chart(chart_vol, use_container_width=True)
-        else:
-            st.info("Nenhuma despesa encontrada para análise de volatilidade.")
 
         st.markdown("---")
         st.markdown("### 📐 Métricas Estatísticas")
@@ -1462,15 +1466,13 @@ elif aba == "Statistical 3":
             col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
             col_s4.metric("📊 Variância", f"R$ {variancia:,.2f}")
             col_s5.metric("📊 Coef. Variação", f"{coef_var:.1f}%")
-        else:
-            st.info("Nenhuma despesa disponível para cálculo estatístico.")
 
         st.markdown("---")
         st.markdown("### ✅ Insights Executivos")
         if not df_proj.empty:
-            st.write(f"Nos últimos {horizonte} meses, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. A tendência indica que nos próximos 3 meses o caixa pode chegar a aproximadamente R$ {df_proj['CashFlow'].head(3).sum():,.2f}, e em 6 meses R$ {df_proj['CashFlow'].sum():,.2f}.")
+            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. A tendência indica que nos próximos 3 meses o caixa pode chegar a aproximadamente R$ {df_proj['CashFlow'].head(3).sum():,.2f}, e em 6 meses R$ {df_proj['CashFlow'].sum():,.2f}.")
         else:
-            st.write(f"Nos últimos {horizonte} meses, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}, mas não há dados suficientes para projeções futuras.")
+            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}, mas não há dados suficientes para projeções futuras.")
     else:
         st.info("Nenhum lançamento disponível para análise estatística.")
 
