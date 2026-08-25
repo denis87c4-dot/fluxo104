@@ -81,7 +81,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", "Dashboard 2", "Resumo Geral", "Projections & Charts", "Monthly Audit 2", "Monthly Audit",
-    "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Cadastro (Form)",
+    "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
@@ -1356,6 +1356,123 @@ elif aba == "Statistical Indicators":
         st.altair_chart(chart_burn, use_container_width=True)
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
+
+elif aba == "Statistical 3":
+    st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
+    st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="stat3_status")
+        with col_f2:
+            periodo_sel = st.selectbox("📅 Horizonte", ["Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses"], key="stat3_periodo")
+
+        # Definir horizonte
+        meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
+        horizonte = meses_map[periodo_sel]
+
+        ultimo_mes = df["Data"].max()
+        inicio_periodo = ultimo_mes - pd.DateOffset(months=horizonte)
+        df_filtrado = df[df["Data"] >= inicio_periodo]
+
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        # KPIs
+        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        saidas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].sum()
+        saldo_liquido = entradas - saidas
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas", f"R$ {saidas:,.2f}", delta_color="inverse")
+        col3.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+        st.markdown("### 📈 Tendência Histórica com Projeção")
+
+        pivot = df_filtrado.pivot_table(index="AnoMes", values="Valor", columns="Tipo", aggfunc="sum", fill_value=0).reset_index()
+        pivot["CashFlow"] = pivot.get("Receita", 0) - pivot.get("Despesa", 0)
+
+        # Projeção linear para próximos meses
+        x_vals = np.arange(len(pivot))
+        y_vals = pivot["CashFlow"].values
+        if len(y_vals) > 1:
+            a, b = np.polyfit(x_vals, y_vals, 1)
+            futuros = 6  # próximos 6 meses
+            proj_x = np.arange(len(pivot), len(pivot) + futuros)
+            proj_y = a * proj_x + b
+            proj_periodos = [(ultimo_mes + relativedelta(months=i)).strftime("%Y-%m") for i in range(1, futuros+1)]
+            df_proj = pd.DataFrame({"AnoMes": proj_periodos, "CashFlow": proj_y, "Tipo": "Projeção"})
+        else:
+            df_proj = pd.DataFrame()
+
+        df_hist = pivot[["AnoMes", "CashFlow"]].copy()
+        df_hist["Tipo"] = "Histórico"
+        df_final = pd.concat([df_hist, df_proj])
+
+        chart_trend = alt.Chart(df_final).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("AnoMes:N", title="Período"),
+            y=alt.Y("CashFlow:Q", title="Fluxo de Caixa (R$)"),
+            color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Histórico", "Projeção"], range=["#2a9d8f", "#e63946"])),
+            tooltip=["AnoMes", "CashFlow", "Tipo"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_trend, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 🔮 Cenários Futuros")
+        if not df_proj.empty:
+            st.dataframe(df_proj, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para gerar projeções.")
+
+        st.markdown("---")
+        st.markdown("### 📊 Volatilidade das Despesas (Scatter Plot)")
+        df_vol = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
+        if not df_vol.empty:
+            chart_vol = alt.Chart(df_vol).mark_circle(size=100, color="#e63946").encode(
+                x=alt.X("AnoMes:N", title="Período"),
+                y=alt.Y("Valor:Q", title="Total de Despesas (R$)"),
+                tooltip=["AnoMes", "Valor"]
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_vol, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa encontrada para análise de volatilidade.")
+
+        st.markdown("---")
+        st.markdown("### 📐 Métricas Estatísticas")
+        despesas_vals = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].values
+        if len(despesas_vals) > 0:
+            media = np.mean(despesas_vals)
+            mediana = np.median(despesas_vals)
+            desvio_padrao = np.std(despesas_vals, ddof=1)
+            variancia = np.var(despesas_vals, ddof=1)
+            coef_var = (desvio_padrao / media * 100) if media != 0 else 0
+
+            col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
+            col_s1.metric("📊 Média", f"R$ {media:,.2f}")
+            col_s2.metric("📊 Mediana", f"R$ {mediana:,.2f}")
+            col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
+            col_s4.metric("📊 Variância", f"R$ {variancia:,.2f}")
+            col_s5.metric("📊 Coef. Variação", f"{coef_var:.1f}%")
+        else:
+            st.info("Nenhuma despesa disponível para cálculo estatístico.")
+
+        st.markdown("---")
+        st.markdown("### ✅ Insights Executivos")
+        if not df_proj.empty:
+            st.write(f"Nos últimos {horizonte} meses, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. A tendência indica que nos próximos 3 meses o caixa pode chegar a aproximadamente R$ {df_proj['CashFlow'].head(3).sum():,.2f}, e em 6 meses R$ {df_proj['CashFlow'].sum():,.2f}.")
+        else:
+            st.write(f"Nos últimos {horizonte} meses, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}, mas não há dados suficientes para projeções futuras.")
+    else:
+        st.info("Nenhum lançamento disponível para análise estatística.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
