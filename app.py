@@ -851,18 +851,6 @@ elif aba == "Monthly Audit":
         taxa_execucao = (total_efetivado/total_budget*100) if total_budget>0 else 0.0
         col_i1, col_i2, col_i3 = st.columns(3)
         col_i1.metric("💰 Total Budget", f"R$ {total_budget:,.2f}")
-        col_i2.metric("✅ Efetivado", f"R$ {total_efetivado:,.2f}", delta=f"{taxa_execucao:.1f}% Executado")
-        col_i3.metric("📉 Saldo a Pagar", f"R$ {saldo_a_pagar:,.2f}")
-
-        # Mapa visual de contas
-        st.markdown("### 🗺️ Mapa Visual de Contas")
-        for _, row in pivot_audit.iterrows():
-            conta = row["Conta"]
-            budget = row["Despesa_Budget"]
-            efetivado = row["Despesa_Efetivado"]
-            perc = (efetivado/budget*100) if budget>0 else 0
-            if perc < 80:
-                cor = "#2a9d8f"  # verde
 
 elif aba == "Monthly Audit":
     st.subheader("📋 Monthly Audit Financeiro")
