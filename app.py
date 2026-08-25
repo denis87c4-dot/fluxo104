@@ -506,18 +506,105 @@ elif aba == "Transactions Details":
             )
 
             chart_limite = alt.Chart(df_cat_sim).mark_bar().encode(
-                x=alt.X("% do Limite:Q", title="% do Limite Usado"),
+
+elif aba == "Transactions Details":
+    st.subheader("🔎 Transactions Details - Fluxo de Caixa Explicado")
+    df = st.session_state.lancamentos
+
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Seleção de mês e status
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_sel = st.selectbox("📅 Selecione o Mês", meses_disponiveis)
+        status_opcoes = ["Todos", "Efetivado", "Budget"]
+        status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes)
+
+        ano, mes = map(int, mes_sel.split("-"))
+        df_mes = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        if status_sel != "Todos":
+            df_mes = df_mes[df_mes["Status"] == status_sel]
+
+        # ==================== LIMITES COM PERSISTÊNCIA ====================
+        ARQUIVO_LIMITES = "limites.csv"
+        if os.path.exists(ARQUIVO_LIMITES):
+            df_limites = pd.read_csv(ARQUIVO_LIMITES)
+            limites = dict(zip(df_limites["Categoria"], df_limites["Limite"]))
+        else:
+            limites = {}
+
+        st.sidebar.markdown("### ⚙️ Definir Limites de Categorias")
+        categorias_unicas = df_mes[df_mes["Tipo"] == "Despesa"]["Categoria"].unique().tolist()
+        novos_limites = {}
+        for cat in categorias_unicas:
+            valor_padrao = limites.get(cat, 1000.0)
+            novos_limites[cat] = st.sidebar.number_input(
+                f"Limite para {cat}",
+                min_value=0.0,
+                value=float(valor_padrao),
+                step=100.0,
+                key=f"limite_{cat}"
+            )
+
+        if st.sidebar.button("💾 Salvar Limites"):
+            pd.DataFrame({"Categoria": list(novos_limites.keys()), "Limite": list(novos_limites.values())}).to_csv(ARQUIVO_LIMITES, index=False)
+            st.sidebar.success("Limites salvos com sucesso!")
+
+        # ==================== SIMULADOR DINÂMICO ====================
+        st.markdown("### ⚙️ Simulador Dinâmico de Fluxo de Caixa")
+        saldo_simulado = 0.0
+        gastos_por_categoria = {}
+
+        for idx, row in df_mes.iterrows():
+            incluir = st.checkbox(
+                f"{row['Data'].strftime('%d/%m')} - {row['Descricao']} ({row['Tipo']}) - R$ {row['Valor']:,.2f}",
+                value=True,
+                key=f"sim_{idx}"
+            )
+            if incluir:
+                if row["Tipo"] == "Receita":
+                    saldo_simulado += row["Valor"]
+                elif row["Tipo"] == "Despesa":
+                    saldo_simulado -= row["Valor"]
+                    gastos_por_categoria[row["Categoria"]] = gastos_por_categoria.get(row["Categoria"], 0) + row["Valor"]
+
+        st.metric("💵 Saldo Simulado", f"R$ {saldo_simulado:,.2f}")
+
+        # ==================== ALERTAS DE LIMITE ====================
+        st.markdown("### 🚨 Status de Categorias no Simulador")
+        df_cat_sim = pd.DataFrame({"Categoria": list(gastos_por_categoria.keys()), "Valor": list(gastos_por_categoria.values())})
+        df_cat_sim["Limite"] = df_cat_sim["Categoria"].map(novos_limites).fillna(0)
+        df_cat_sim["Status"] = df_cat_sim.apply(
+            lambda r: "Ultrapassado 🚨" if r["Valor"] > r["Limite"] and r["Limite"] > 0
+            else ("Próximo ⚠️" if r["Valor"] >= 0.8 * r["Limite"] and r["Limite"] > 0 else "OK ✅"),
+            axis=1
+        )
+        st.dataframe(df_cat_sim, use_container_width=True)
+
+        for _, row in df_cat_sim.iterrows():
+            if row["Status"] == "Ultrapassado 🚨":
+                st.error(f"Categoria {row['Categoria']} ultrapassou o limite! Gasto: R$ {row['Valor']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
+            elif row["Status"] == "Próximo ⚠️":
+                st.warning(f"Categoria {row['Categoria']} está próxima do limite! Gasto: R$ {row['Valor']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
+
+        # ==================== GRÁFICO DE PROGRESSO ====================
+        st.markdown("### 📊 Progresso de Despesas vs Limite")
+        if not df_cat_sim.empty:
+            df_cat_sim["Perc_Limite"] = df_cat_sim.apply(
+                lambda r: (r["Valor"] / r["Limite"] * 100) if r["Limite"] > 0 else 0,
+                axis=1
+            )
+
+            chart_limite = alt.Chart(df_cat_sim).mark_bar().encode(
+                x=alt.X("Perc_Limite:Q", title="% do Limite Usado"),
                 y=alt.Y("Categoria:N", sort="-x"),
                 color=alt.condition(
-                    alt.datum["% do Limite"] >= 100, 
-                    alt.value("red"),
-                    alt.condition(
-                        alt.datum["% do Limite"] >= 80,
-                        alt.value("orange"),
-                        alt.value("green")
-                    )
+                    alt.datum.Perc_Limite >= 100, alt.value("red"),
+                    alt.condition(alt.datum.Perc_Limite >= 80, alt.value("orange"), alt.value("green"))
                 ),
-                tooltip=["Categoria", "Valor", "Limite", "% do Limite", "Status"]
+                tooltip=["Categoria", "Valor", "Limite", "Perc_Limite", "Status"]
             ).properties(height=300)
             st.altair_chart(chart_limite, use_container_width=True)
 
@@ -527,44 +614,36 @@ elif aba == "Transactions Details":
         dias_totais = pd.Period(mes_sel).days_in_month
         fator_proj = dias_totais / dias_passados if dias_passados > 0 else 1
 
-        df_cat_sim["Projeção Fim do Mês"] = df_cat_sim["Valor"] * fator_proj
-        df_cat_sim["% Proj. Limite"] = df_cat_sim.apply(
-            lambda r: (r["Projeção Fim do Mês"] / r["Limite"] * 100) if r["Limite"] > 0 else 0,
+        df_cat_sim["Proj_Fim_Mes"] = df_cat_sim["Valor"] * fator_proj
+        df_cat_sim["Perc_Proj_Limite"] = df_cat_sim.apply(
+            lambda r: (r["Proj_Fim_Mes"] / r["Limite"] * 100) if r["Limite"] > 0 else 0,
             axis=1
         )
 
-        st.dataframe(df_cat_sim[["Categoria", "Valor", "Limite", "Status", "% do Limite", "Projeção Fim do Mês", "% Proj. Limite"]],
+        st.dataframe(df_cat_sim[["Categoria", "Valor", "Limite", "Status", "Perc_Limite", "Proj_Fim_Mes", "Perc_Proj_Limite"]],
                      use_container_width=True)
 
         chart_proj = alt.Chart(df_cat_sim).mark_bar().encode(
-            x=alt.X("% Proj. Limite:Q", title="% do Limite (Projeção)"),
+            x=alt.X("Perc_Proj_Limite:Q", title="% do Limite (Projeção)"),
             y=alt.Y("Categoria:N", sort="-x"),
             color=alt.condition(
-                alt.datum["% Proj. Limite"] >= 100, 
-                alt.value("red"),
-                alt.condition(
-                    alt.datum["% Proj. Limite"] >= 80,
-                    alt.value("orange"),
-                    alt.value("green")
-                )
+                alt.datum.Perc_Proj_Limite >= 100, alt.value("red"),
+                alt.condition(alt.datum.Perc_Proj_Limite >= 80, alt.value("orange"), alt.value("green"))
             ),
-            tooltip=["Categoria", "Valor", "Limite", "Projeção Fim do Mês", "% Proj. Limite", "Status"]
+            tooltip=["Categoria", "Valor", "Limite", "Proj_Fim_Mes", "Perc_Proj_Limite", "Status"]
         ).properties(height=350)
         st.altair_chart(chart_proj, use_container_width=True)
 
         for _, row in df_cat_sim.iterrows():
-            if row["% Proj. Limite"] >= 100:
-                st.error(f"⚠️ Projeção indica que a categoria {row['Categoria']} vai ultrapassar o limite! Projeção: R$ {row['Projeção Fim do Mês']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
-            elif row["% Proj. Limite"] >= 80:
-                st.warning(f"⚠️ Projeção indica que a categoria {row['Categoria']} está próxima do limite! Projeção: R$ {row['Projeção Fim do Mês']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
+            if row["Perc_Proj_Limite"] >= 100:
+                st.error(f"⚠️ Projeção indica que a categoria {row['Categoria']} vai ultrapassar o limite! Projeção: R$ {row['Proj_Fim_Mes']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
+            elif row["Perc_Proj_Limite"] >= 80:
+                st.warning(f"⚠️ Projeção indica que a categoria {row['Categoria']} está próxima do limite! Projeção: R$ {row['Proj_Fim_Mes']:,.2f} / Limite: R$ {row['Limite']:,.2f}")
 
         # ==================== CENÁRIOS DE PROJEÇÃO ====================
         st.markdown("### 🎯 Cenários de Projeção")
         ajuste_despesas = st.slider("Ajuste percentual em despesas (%)", -50, 50, 0, step=5)
-        ajuste_receitas = st.slider("Ajuste percentual em receitas (%)", -50, 50, 0, step=5)
-
-        df_cat_sim["Valor Ajustado"] = df_cat_sim["Valor"] * (1 + ajuste_despesas/100)
-        df_cat_sim
+        ajuste_rece
 
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
