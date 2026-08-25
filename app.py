@@ -779,80 +779,6 @@ elif aba == "Projections & Charts":
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
 elif aba == "Monthly Audit":
-    st.subheader("📒 Monthly Audit - Auditoria Completa")
-    st.markdown("Painel robusto com **Budget vs Efetivado**, auditoria por **Conta** e **Categoria**, múltiplos filtros, indicadores percentuais, mapa visual e gráficos de linha.")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        # Preparação
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        # Filtros principais
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
-            mes_sel = st.selectbox("📅 Selecione o Mês", meses_disponiveis, index=0)
-        with col_f2:
-            status_opcoes = ["Todos", "Efetivado", "Budget"]
-            status_sel = st.selectbox("📌 Filtrar por Status", status_opcoes, index=0)
-
-        ano_sel, mes_num = map(int, mes_sel.split("-"))
-        df_mes = df[(df["Data"].dt.year == ano_sel) & (df["Data"].dt.month == mes_num)]
-        if status_sel != "Todos":
-            df_mes = df_mes[df_mes["Status"] == status_sel]
-
-        # Filtros adicionais
-        col_f3, col_f4, col_f5 = st.columns(3)
-        with col_f3:
-            categoria_sel = st.selectbox("📂 Categoria", ["Todas"] + st.session_state.categorias)
-        with col_f4:
-            conta_sel = st.selectbox("🏦 Conta", ["Todas"] + df_mes["Conta"].unique().tolist())
-        with col_f5:
-            tipo_sel = st.selectbox("🔎 Tipo", ["Todos", "Receita", "Despesa", "Transferência"])
-
-        if categoria_sel != "Todas":
-            df_mes = df_mes[df_mes["Categoria"] == categoria_sel]
-        if conta_sel != "Todas":
-            df_mes = df_mes[df_mes["Conta"] == conta_sel]
-        if tipo_sel != "Todos":
-            df_mes = df_mes[df_mes["Tipo"] == tipo_sel]
-
-        # Auditoria por Categoria
-        st.markdown("### 📂 Auditoria por Categoria (Budget vs Efetivado)")
-        df_cat = df_mes.groupby(["Categoria", "Status"])["Valor"].sum().reset_index()
-        pivot_cat = df_cat.pivot_table(index="Categoria", columns="Status", values="Valor", fill_value=0.0).reset_index()
-        for col in ["Budget", "Efetivado"]:
-            if col not in pivot_cat.columns:
-                pivot_cat[col] = 0.0
-        pivot_cat["Diferença"] = pivot_cat["Budget"] - pivot_cat["Efetivado"]
-        pivot_cat["% Execução"] = (pivot_cat["Efetivado"] / pivot_cat["Budget"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
-        st.dataframe(aplicar_estilo_tabela(pivot_cat.style), use_container_width=True)
-
-        # Auditoria por Conta
-        st.markdown("### 🏦 Auditoria por Conta")
-        audit_table = df_mes.groupby(["Conta", "Tipo", "Status"])["Valor"].sum().reset_index()
-        pivot_audit = audit_table.pivot_table(index="Conta", columns=["Tipo","Status"], values="Valor", fill_value=0.0)
-        pivot_audit.columns = [f"{tipo}_{status}" for tipo, status in pivot_audit.columns]
-        pivot_audit = pivot_audit.reset_index()
-        for col in ["Despesa_Budget", "Despesa_Efetivado", "Receita_Budget", "Receita_Efetivado"]:
-            if col not in pivot_audit.columns:
-                pivot_audit[col] = 0.0
-        pivot_audit["% Execução Despesa"] = (pivot_audit["Despesa_Efetivado"] / pivot_audit["Despesa_Budget"] * 100).replace([np.inf,-np.inf],0).fillna(0)
-        pivot_audit["% Execução Receita"] = (pivot_audit["Receita_Efetivado"] / pivot_audit["Receita_Budget"] * 100).replace([np.inf,-np.inf],0).fillna(0)
-        st.dataframe(aplicar_estilo_tabela(pivot_audit.style), use_container_width=True)
-
-        # Indicadores executivos
-        st.markdown("### 📌 Indicadores Executivos")
-        total_budget = df_mes[df_mes["Status"]=="Budget"]["Valor"].sum()
-        total_efetivado = df_mes[df_mes["Status"]=="Efetivado"]["Valor"].sum()
-        saldo_a_pagar = total_budget - total_efetivado
-        taxa_execucao = (total_efetivado/total_budget*100) if total_budget>0 else 0.0
-        col_i1, col_i2, col_i3 = st.columns(3)
-        col_i1.metric("💰 Total Budget", f"R$ {total_budget:,.2f}")
-
-elif aba == "Monthly Audit":
     st.subheader("📋 Monthly Audit Financeiro")
     st.markdown("Auditoria mensal clara e verificável — conectando indicadores às transações reais.")
 
@@ -874,6 +800,7 @@ elif aba == "Monthly Audit":
         cash_flow = entradas - saidas_cc
         saldo_liquido = entradas - (saidas_cc + passivo_cartao)
 
+        # KPIs
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
         col2.metric("🔴 Saídas (C/C)", f"R$ {saidas_cc:,.2f}", delta_color="inverse")
@@ -889,13 +816,47 @@ elif aba == "Monthly Audit":
 
         st.markdown("---")
         st.markdown("### 📈 Gráficos Comparativos")
-        df_comp = pd.DataFrame({"Tipo": ["Entradas", "Saídas"], "Valor": [entradas, saidas_cc]})
-        chart_bar = alt.Chart(df_comp).mark_bar().encode(x="Tipo:N", y="Valor:Q", color="Tipo:N")
-        st.altair_chart(chart_bar, use_container_width=True)
 
-        df_line = pd.DataFrame({"Dia": df_mes["Data"].dt.day, "Cash Flow": df_mes["Valor"].cumsum()})
-        chart_line = alt.Chart(df_line).mark_line(color="#e63946", strokeWidth=3).encode(x="Dia:Q", y="Cash Flow:Q")
-        st.altair_chart(chart_line, use_container_width=True)
+        # Gráfico Entradas vs Saídas
+        df_comp = pd.DataFrame({"Tipo": ["Entradas", "Saídas"], "Valor": [entradas, saidas_cc]})
+        if df_comp["Valor"].sum() > 0:
+            chart_bar = alt.Chart(df_comp).mark_bar(size=60).encode(
+                x=alt.X("Tipo:N", title="Tipo de Transação"),
+                y=alt.Y("Valor:Q", title="Valor (R$)"),
+                color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Entradas", "Saídas"], range=["#2a9d8f", "#e63946"])),
+                tooltip=["Tipo", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_bar, use_container_width=True)
+        else:
+            st.warning("Nenhum dado disponível para gerar o gráfico de Entradas vs Saídas.")
+
+        # Gráfico Cash Flow Acumulado
+        df_line = df_mes.copy()
+        df_line = df_line.sort_values("Data")
+        df_line["Cash Flow"] = df_line["Valor"].cumsum()
+        if not df_line.empty:
+            chart_line = alt.Chart(df_line).mark_line(color="#e63946", strokeWidth=3, point=True).encode(
+                x=alt.X("Data:T", title="Data"),
+                y=alt.Y("Cash Flow:Q", title="Fluxo de Caixa Acumulado (R$)"),
+                tooltip=["Data", "Cash Flow"]
+            ).properties(height=300)
+            st.altair_chart(chart_line, use_container_width=True)
+        else:
+            st.warning("Nenhum dado disponível para gerar o gráfico de Cash Flow.")
+
+        st.markdown("---")
+        st.markdown("### 🌡️ Mapa de Calor de Movimentações")
+        df_heat = df_mes.groupby(df_mes["Data"].dt.day)["Valor"].sum().reset_index()
+        if not df_heat.empty:
+            chart_heat = alt.Chart(df_heat).mark_rect().encode(
+                x=alt.X("Data:O", title="Dia do Mês"),
+                y=alt.Y("Valor:Q", title="Movimentação (R$)"),
+                color=alt.Color("Valor:Q", scale=alt.Scale(scheme="reds")),
+                tooltip=["Data", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_heat, use_container_width=True)
+        else:
+            st.info("Nenhuma movimentação registrada neste mês para o mapa de calor.")
 
         st.markdown("---")
         st.markdown("### ✅ Checklist de Conformidade")
