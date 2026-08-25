@@ -780,7 +780,7 @@ elif aba == "Projections & Charts":
 
 elif aba == "Monthly Audit":
     st.subheader("📋 Monthly Audit Financeiro")
-    st.markdown("Auditoria mensal clara e verificável — conectando indicadores às transações reais.")
+    st.markdown("Auditoria mensal robusta — KPIs, transações, análises de risco e simulações.")
 
     df = st.session_state.lancamentos
     if not df.empty:
@@ -810,39 +810,94 @@ elif aba == "Monthly Audit":
 
         st.markdown("---")
         st.markdown("### 🧾 Transações Detalhadas")
-        df_exib = df_mes[["Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
+        df_exib = df_mes[["Tipo", "Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
         df_exib["Valor"] = df_exib["Valor"].apply(lambda x: f"R$ {x:,.2f}")
-        st.dataframe(aplicar_estilo_tabela(df_exib.style), use_container_width=True)
+        st.dataframe(aplicar_estilo_tabela(df_exib), use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 📈 Gráficos Comparativos")
+        st.markdown("### 📊 Ranking de Categorias (Top 5)")
+        df_top_cat = df_mes[df_mes["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+        df_top_cat = df_top_cat.sort_values("Valor", ascending=False).head(5)
+        st.bar_chart(df_top_cat.set_index("Categoria"))
 
-        # Gráfico Entradas vs Saídas
-        df_comp = pd.DataFrame({"Tipo": ["Entradas", "Saídas"], "Valor": [entradas, saidas_cc]})
-        if df_comp["Valor"].sum() > 0:
-            chart_bar = alt.Chart(df_comp).mark_bar(size=60).encode(
-                x=alt.X("Tipo:N", title="Tipo de Transação"),
-                y=alt.Y("Valor:Q", title="Valor (R$)"),
-                color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Entradas", "Saídas"], range=["#2a9d8f", "#e63946"])),
-                tooltip=["Tipo", "Valor"]
-            ).properties(height=300)
-            st.altair_chart(chart_bar, use_container_width=True)
-        else:
-            st.warning("Nenhum dado disponível para gerar o gráfico de Entradas vs Saídas.")
+        st.markdown("---")
+        st.markdown("### 📈 Stress Test (Receitas -20%)")
+        receitas_stress = entradas * 0.8
+        saldo_stress = receitas_stress - (saidas_cc + passivo_cartao)
+        st.metric("Saldo Líquido sob Stress", f"R$ {saldo_stress:,.2f}", delta_color="inverse")
 
-        # Gráfico Cash Flow Acumulado
-        df_line = df_mes.copy()
-        df_line = df_line.sort_values("Data")
-        df_line["Cash Flow"] = df_line["Valor"].cumsum()
-        if not df_line.empty:
-            chart_line = alt.Chart(df_line).mark_line(color="#e63946", strokeWidth=3, point=True).encode(
-                x=alt.X("Data:T", title="Data"),
-                y=alt.Y("Cash Flow:Q", title="Fluxo de Caixa Acumulado (R$)"),
-                tooltip=["Data", "Cash Flow"]
+        st.markdown("---")
+        st.markdown("### 🛡️ Runway de Caixa")
+        media_despesas = saidas_cc.mean() if isinstance(saidas_cc, pd.Series) else saidas_cc
+        runway_meses = (saldo_liquido / media_despesas) if media_despesas > 0 else 0
+        st.metric("Runway (meses)", f"{runway_meses:.1f}", delta="Horizonte de sobrevivência")
+
+        st.markdown("---")
+        st.markdown("### 🌡️ Mapa de Calor de Movimentações")
+        df_heat = df_mes.groupby(df_mes["Data"].dt.day)["Valor"].sum().reset_index()
+        if not df_heat.empty:
+            chart_heat = alt.Chart(df_heat).mark_rect().encode(
+                x=alt.X("Data:O", title="Dia do Mês"),
+                y=alt.Y("Valor:Q", title="Movimentação (R$)"),
+                color=alt.Color("Valor:Q", scale=alt.Scale(scheme="reds")),
+                tooltip=["Data", "Valor"]
             ).properties(height=300)
-            st.altair_chart(chart_line, use_container_width=True)
+            st.altair_chart(chart_heat, use_container_width=True)
         else:
-            st.warning("Nenhum dado disponível para gerar o gráfico de Cash Flow.")
+
+elif aba == "Monthly Audit":
+    st.subheader("📋 Monthly Audit Financeiro")
+    st.markdown("Auditoria mensal robusta — KPIs, transações, análises de risco e simulações.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        mes_sel = st.selectbox("📅 Selecione o mês", sorted(df["AnoMes"].unique(), reverse=True))
+        ano, mes = map(int, mes_sel.split("-"))
+        df_mes = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        entradas = df_mes[df_mes["Tipo"] == "Receita"]["Valor"].sum()
+        saidas_cc = df_mes[(df_mes["Tipo"] == "Despesa") & (~df_mes["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        passivo_cartao = df_mes[(df_mes["Tipo"] == "Despesa") & (df_mes["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+        cash_flow = entradas - saidas_cc
+        saldo_liquido = entradas - (saidas_cc + passivo_cartao)
+
+        # KPIs
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas (C/C)", f"R$ {saidas_cc:,.2f}", delta_color="inverse")
+        col3.metric("💳 Cartões", f"R$ {passivo_cartao:,.2f}", delta_color="inverse")
+        col4.metric("📊 Cash Flow", f"R$ {cash_flow:,.2f}", delta_color="inverse")
+        col5.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+        st.markdown("### 🧾 Transações Detalhadas")
+        df_exib = df_mes[["Tipo", "Data", "Descricao", "Categoria", "Conta", "Valor"]].copy()
+        df_exib["Valor"] = df_exib["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        st.dataframe(aplicar_estilo_tabela(df_exib), use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📊 Ranking de Categorias (Top 5)")
+        df_top_cat = df_mes[df_mes["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+        df_top_cat = df_top_cat.sort_values("Valor", ascending=False).head(5)
+        st.bar_chart(df_top_cat.set_index("Categoria"))
+
+        st.markdown("---")
+        st.markdown("### 📈 Stress Test (Receitas -20%)")
+        receitas_stress = entradas * 0.8
+        saldo_stress = receitas_stress - (saidas_cc + passivo_cartao)
+        st.metric("Saldo Líquido sob Stress", f"R$ {saldo_stress:,.2f}", delta_color="inverse")
+
+        st.markdown("---")
+        st.markdown("### 🛡️ Runway de Caixa")
+        media_despesas = saidas_cc.mean() if isinstance(saidas_cc, pd.Series) else saidas_cc
+        runway_meses = (saldo_liquido / media_despesas) if media_despesas > 0 else 0
+        st.metric("Runway (meses)", f"{runway_meses:.1f}", delta="Horizonte de sobrevivência")
 
         st.markdown("---")
         st.markdown("### 🌡️ Mapa de Calor de Movimentações")
@@ -865,10 +920,10 @@ elif aba == "Monthly Audit":
         st.write("📊 Budget x Realizado: Cartões acima do previsto")
 
         st.markdown("---")
-        st.markdown(f"**Narrativa:** Em {mes_sel}, o fluxo de caixa apresentou saldo líquido de R$ {saldo_liquido:,.2f}, impactado por despesas recorrentes e passivos de cartão.")
+        st.markdown(f"**Narrativa Executiva:** Em {mes_sel}, o fluxo de caixa apresentou saldo líquido de R$ {saldo_liquido:,.2f}. As despesas foram concentradas em {', '.join(df_top_cat['Categoria'].tolist())}. O runway atual é de {runway_meses:.1f} meses, e sob stress de receitas (-20%) o saldo líquido cairia para R$ {saldo_stress:,.2f}.")
     else:
         st.info("Nenhum lançamento disponível para auditoria.")
-
+                
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
     st.markdown("Indicadores financeiros avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
