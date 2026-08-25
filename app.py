@@ -1547,6 +1547,103 @@ elif aba == "IA":
             col_s1.metric("📊 Média Despesa", f"R$ {media:,.2f}")
             col_s2.metric("📊 Mediana", f"R$ {mediana:,.2f}")
             col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
+
+elif aba == "IA":
+    st.subheader("🤖 IA - Insight Automático")
+    st.markdown("Painel de inteligência artificial: KPIs estratégicos, análises estatísticas, Radar de Risco IA e múltiplos insights escritos.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros de período
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="ia_status")
+        with col_f2:
+            periodo_sel = st.selectbox("📅 Horizonte", ["Mensal", "Último mês", "Próximos 3 meses", "Próximos 6 meses", "Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses"], key="ia_periodo")
+
+        ultimo_mes = df["Data"].max()
+        if periodo_sel == "Mensal":
+            mes_sel = st.selectbox("Selecione o mês", sorted(df["AnoMes"].unique(), reverse=True), key="ia_mes")
+            ano, mes = map(int, mes_sel.split("-"))
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Último mês":
+            ano, mes = ultimo_mes.year, ultimo_mes.month
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Próximos 3 meses":
+            fim = ultimo_mes + relativedelta(months=3)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        elif periodo_sel == "Próximos 6 meses":
+            fim = ultimo_mes + relativedelta(months=6)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        else:
+            meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
+            horizonte = meses_map[periodo_sel]
+            inicio_periodo = ultimo_mes - pd.DateOffset(months=horizonte)
+            df_filtrado = df[df["Data"] >= inicio_periodo]
+
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        # KPIs estratégicos
+        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        saidas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].sum()
+        saldo_liquido = entradas - saidas
+        comprometimento_renda = (saidas / entradas * 100) if entradas > 0 else 0
+        taxa_poupanca = (saldo_liquido / entradas * 100) if entradas > 0 else 0
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas", f"R$ {saidas:,.2f}", delta_color="inverse")
+        col3.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+        col4.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
+
+        st.markdown("---")
+        st.markdown("### 📈 Projeção Automática de Fluxo de Caixa")
+        pivot = df_filtrado.pivot_table(index="AnoMes", values="Valor", columns="Tipo", aggfunc="sum", fill_value=0).reset_index()
+        pivot["CashFlow"] = pivot.get("Receita", 0) - pivot.get("Despesa", 0)
+
+        # Projeção linear para próximos 3 meses
+        x_vals = np.arange(len(pivot))
+        y_vals = pivot["CashFlow"].values
+        if len(y_vals) > 1:
+            a, b = np.polyfit(x_vals, y_vals, 1)
+            proj_x = np.arange(len(pivot), len(pivot) + 3)
+            proj_y = a * proj_x + b
+            proj_periodos = [(ultimo_mes + relativedelta(months=i)).strftime("%Y-%m") for i in range(1, 4)]
+            df_proj = pd.DataFrame({"AnoMes": proj_periodos, "CashFlow": proj_y, "Tipo": "Projeção"})
+        else:
+            df_proj = pd.DataFrame()
+
+        df_hist = pivot[["AnoMes", "CashFlow"]].copy()
+        df_hist["Tipo"] = "Histórico"
+        df_final = pd.concat([df_hist, df_proj])
+
+        chart_trend = alt.Chart(df_final).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("AnoMes:N", title="Período"),
+            y=alt.Y("CashFlow:Q", title="Fluxo de Caixa (R$)"),
+            color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Histórico", "Projeção"], range=["#2a9d8f", "#e63946"])),
+            tooltip=["AnoMes", "CashFlow", "Tipo"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_trend, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📊 Estatísticas Avançadas")
+        despesas_vals = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].values
+        if len(despesas_vals) > 0:
+            media = np.mean(despesas_vals)
+            mediana = np.median(despesas_vals)
+            desvio_padrao = np.std(despesas_vals, ddof=1)
+            variancia = np.var(despesas_vals, ddof=1)
+            coef_var = (desvio_padrao / media * 100) if media != 0 else 0
+
+            col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
+            col_s1.metric("📊 Média Despesa", f"R$ {media:,.2f}")
+            col_s2.metric("📊 Mediana", f"R$ {mediana:,.2f}")
+            col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
             col_s4.metric("📊 Variância", f"R$ {variancia:,.2f}")
             col_s5.metric("📊 Coef. Variação", f"{coef_var:.1f}%")
 
@@ -1572,18 +1669,10 @@ elif aba == "IA":
 
         st.markdown("---")
         st.markdown("### 📝 Insights Escritos IA")
-        st.write(f"- O fluxo de caixa acumulado nos últimos 6 meses foi de R$ {saldo_liquido:,.2f}. Isso indica {'resiliência financeira' if saldo_liquido>0 else 'fragilidade financeira'} no período.")
-        st.write(f"- O comprometimento da renda está em {comprometimento_renda:.1f}%. {'Esse nível é considerado de alto risco e reduz a flexibilidade financeira.' if comprometimento_renda>70 else 'Esse nível é aceitável e permite margem de manobra.'}")
-        st.write(f"- A taxa de poupança está em {taxa_poupanca:.1f}%. {'Isso sugere baixa capacidade de acumulação de reservas.' if taxa_poupanca<10 else 'Isso demonstra capacidade de acumular reservas.'}")
-        if len(despesas_vals) > 0:
-            st.write(f"- O desvio padrão das despesas foi de R$ {desvio_padrao:,.2f}, mostrando {'alta volatilidade' if desvio_padrao>media*0.5 else 'estabilidade relativa'} nos gastos.")
-            st.write(f"- A variância das despesas foi de R$ {variancia:,.2f}, reforçando a {'dispersão significativa' if variancia>media*2 else 'consistência'} dos valores mensais.")
-        if not df_proj.empty:
-            tendencia = "positiva 📈" if df_proj["CashFlow"].mean() > 0 else "negativa 📉"
-            st.write(f"- A projeção indica tendência {tendencia}. Nos próximos 3 meses, o caixa projetado é de R$ {df_proj['CashFlow'].sum():,.2f}.")
-            st.write(f"- Se mantido o ritmo atual, o runway de caixa é de aproximadamente {saldo_liquido/saidas:.1f} meses.")
-    else:
-        st.info("Nenhum lançamento disponível para análise de IA.")
+        st.write(f"- O fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. Isso indica {'resiliência financeira' if saldo_liquido>0 else 'fragilidade financeira'} no período.")
+        st.write(f"- O comprometimento da renda está em {comprometimento_renda:.1f}%. {'Alto risco, reduz flexibilidade.' if comprometimento_renda>70 else 'Nível aceitável, permite margem de manobra.'}")
+        st.write(f"- A taxa de poupança está em {taxa_poupanca:.1f}%. {'Baixa capacidade de acumulação de reservas.' if taxa_poupanca<10 else 'Boa capacidade de acumular reservas.'}")
+        if len(d
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
