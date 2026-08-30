@@ -938,53 +938,81 @@ elif aba == "Monthly Audit":
         total_efetivado = df_mes[df_mes["Status"]=="Efetivado"]["Valor"].sum()
         saldo_a_pagar = total_budget - total_efetivado
         taxa_execucao = (total_efetivado/total_budget*100) if total_budget>0 else 0.0
-        col_i1, col_i2, col_i3 = st.columns(3)
-        col_i1.metric("💰 Total Budget", f"R$ {total_budget:,.2f}")
-        col_i2.metric("✅ Efetivado", f"R$ {total_efetivado:,.2f}", delta=f"{taxa_execucao:.1f}% Executado")
-        col_i3.metric("📉 Saldo a Pagar", f"R$ {saldo_a_pagar:,.2f}")
+elif aba == "Monthly Audit":
+    st.subheader("📊 Monthly Audit - Budget vs Efetivado com Subtotais e Indicadores")
 
-        # Mapa visual de contas
-        st.markdown("### 🗺️ Mapa Visual de Contas")
-        for _, row in pivot_audit.iterrows():
-            conta = row["Conta"]
-            budget = row["Despesa_Budget"]
-            efetivado = row["Despesa_Efetivado"]
-            perc = (efetivado/budget*100) if budget>0 else 0
-            if perc < 80:
-                cor = "#2a9d8f"  # verde
-            elif perc <= 100:
-                cor = "#f4a261"  # amarelo
-            else:
-                cor = "#e76f51"  # vermelho
-            st.markdown(f"<div style='background-color:{cor};padding:8px;border-radius:5px;color:white;'>"
-                        f"Conta: <b>{conta}</b> | Budget: R$ {budget:,.2f} | Efetivado: R$ {efetivado:,.2f} | Execução: {perc:.1f}%"
-                        "</div>", unsafe_allow_html=True)
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
 
-        # Gráficos de linha
-        st.markdown("### 📈 Evolução Temporal")
-        df_temp = df.groupby("AnoMes")["Valor"].sum().reset_index()
-        chart_temp = alt.Chart(df_temp).mark_line(point=True, strokeWidth=3).encode(
-            x="AnoMes:N", y="Valor:Q", tooltip=["AnoMes","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_temp, use_container_width=True)
+        # Agrupar por Categoria e Status
+        df_group = df.groupby(["Categoria", "Status"])["Valor"].sum().reset_index()
 
-        st.markdown("### 📊 Evolução por Categoria")
-        df_cat_line = df.groupby(["AnoMes","Categoria"])["Valor"].sum().reset_index()
-        chart_cat_line = alt.Chart(df_cat_line).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", color="Categoria:N", tooltip=["AnoMes","Categoria","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_cat_line, use_container_width=True)
+        # Pivotar para Budget vs Efetivado
+        df_pivot = df_group.pivot(index="Categoria", columns="Status", values="Valor").fillna(0).reset_index()
 
-        st.markdown("### 📊 Evolução por Conta")
-        df_acc_line = df.groupby(["AnoMes","Conta"])["Valor"].sum().reset_index()
-        chart_acc_line = alt.Chart(df_acc_line).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", color="Conta:N", tooltip=["AnoMes","Conta","Valor"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_acc_line, use_container_width=True)
+        # Calcular percentual de execução
+        df_pivot["% Execução"] = (df_pivot["Efetivado"] / df_pivot["Budget"] * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
+        # Subtotais por Status
+        subtotal_status = df_group.groupby("Status")["Valor"].sum().reset_index()
+        subtotal_status["Categoria"] = "Subtotal"
+        df_group = pd.concat([df_group, subtotal_status], ignore_index=True)
+
+        # Total geral
+        total_geral = pd.DataFrame({"Categoria": ["TOTAL GERAL"], "Status": ["Todos"], "Valor": [df_group["Valor"].sum()]})
+        df_group = pd.concat([df_group, total_geral], ignore_index=True)
+
+        # Função para destacar execução
+        def destacar_execucao(val):
+            try:
+                if isinstance(val, (int, float)):
+                    if val > 120:
+                        return "color: #ff4b4b; font-weight: bold;"  # vermelho
+                    elif val < 80:
+                        return "color: #2a9d8f; font-weight: bold;"  # verde
+            except:
+                pass
+            return ""
+
+        # Formatar tabela
+        df_pivot_fmt = df_pivot.copy()
+        df_pivot_fmt["Budget"] = df_pivot_fmt["Budget"].apply(lambda x: f"R$ {x:,.2f}")
+        df_pivot_fmt["Efetivado"] = df_pivot_fmt["Efetivado"].apply(lambda x: f"R$ {x:,.2f}")
+        df_pivot_fmt["% Execução"] = df_pivot_fmt["% Execução"].apply(lambda x: f"{x:.1f}%")
+
+        st.markdown("### 📄 Tabela Consolidada")
+        st.dataframe(
+            df_pivot_fmt.style.map(destacar_execucao, subset=["% Execução"]),
+            use_container_width=True
+        )
+
+        # Gráfico comparativo Budget vs Efetivado
+        st.markdown("### 📈 Comparativo Budget vs Efetivado")
+        df_melt = df_group.copy()
+        chart_grouped = alt.Chart(df_melt).mark_bar().encode(
+            x=alt.X("Categoria:N", title="Categoria"),
+            y=alt.Y("Valor:Q", title="Valor (R$)"),
+            color=alt.Color("Status:N", scale=alt.Scale(domain=["Budget", "Efetivado"], range=["#f4a261", "#2a9d8f"])),
+            tooltip=["Categoria", "Status", "Valor"]
+        ).properties(height=350)
+        st.altair_chart(chart_grouped, use_container_width=True)
+
+        # Gráfico de percentuais
+        st.markdown("### 📊 Percentual de Execução por Categoria")
+        chart_execucao = alt.Chart(df_pivot).mark_bar().encode(
+            x=alt.X("Categoria:N", title="Categoria"),
+            y=alt.Y("% Execução:Q", title="% Execução"),
+            color=alt.condition(
+                alt.datum["% Execução"] > 120, alt.value("#ff4b4b"),
+                alt.condition(alt.datum["% Execução"] < 80, alt.value("#2a9d8f"), alt.value("#f4a261"))
+            ),
+            tooltip=["Categoria", "% Execução"]
+        ).properties(height=350)
+        st.altair_chart(chart_execucao, use_container_width=True)
     else:
-        st.info("Nenhum lançamento cadastrado para auditoria.")
-
+        st.info("Nenhum lançamento encontrado para exibir o Monthly Audit.")
 elif aba == "Financial Indicators":
     st.subheader("💹 Financial Indicators")
     st.markdown("Indicadores financeiros avançados com filtros de Tipo, Status e Período (Mensal, Trimestral, Quadrimestral).")
