@@ -135,7 +135,7 @@ if aba == "Dashboard":
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
-        meses_disponiveis = sorted(df["AnoMes"].unique().tolist())
+        meses_disponiveis = sorted(df["AnoMes"].unique().tolist(), reverse=True)
         mes_atual_padrao = datetime.today().strftime("%Y-%m")
         if mes_atual_padrao not in meses_disponiveis:
             meses_disponiveis.insert(0, mes_atual_padrao)
@@ -342,7 +342,7 @@ elif aba == "Dashboard 2":
         with col_f1:
             status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
         with col_f2:
-            mes_sel = st.selectbox("📅 Mês", sorted(df["AnoMes"].unique())
+            mes_sel = st.selectbox("📅 Mês", sorted(df["AnoMes"].unique(), reverse=True))
         with col_f3:
             periodo_sel = st.selectbox("📅 Período", ["Mensal", "Trimestral", "Quadrimestral"])
 
@@ -351,10 +351,10 @@ elif aba == "Dashboard 2":
             ano, mes = map(int, mes_sel.split("-"))
             df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
         elif periodo_sel == "Trimestral":
-            tri_sel = st.selectbox("📅 Trimestre", sorted(df["Trimestre"].unique())
+            tri_sel = st.selectbox("📅 Trimestre", sorted(df["Trimestre"].unique(), reverse=True))
             df_filtrado = df[df["Trimestre"] == tri_sel]
         else:
-            quad_sel = st.selectbox("📅 Quadrimestre", sorted(df["Quadrimestre"].unique())
+            quad_sel = st.selectbox("📅 Quadrimestre", sorted(df["Quadrimestre"].unique(), reverse=True))
             df_filtrado = df[df["Quadrimestre"] == quad_sel]
 
         if status_sel != "Todos":
