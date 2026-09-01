@@ -504,24 +504,201 @@ elif aba == "Dashboard 3":
         cash_ratio_val = (entradas / saidas) if saidas > 0 else 0.0
         burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
 
-        col_i1, col_i2, col_i3, col_i4 = st.columns(4)
-        col_i1.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
-        col_i2.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
-        col_i3.metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x")
-        col_i4.metric("🔥 Burn Rate", f"R$ {burn_rate_val:,.2f}", delta_color="inverse")
+elif aba == "Dashboard 3":
+    st.subheader("📊 Dashboard 3 - Painel Executivo Pessoal de Alta Performance")
+    st.markdown("Visão analítica avançada voltada para **finanças pessoais**, equipada com múltiplos filtros dinâmicos, indicadores de comportamento patrimonial e autonomia financeira.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        # Tratamento inicial de dados
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        # ==================== BLOCO DE FILTROS AVANÇADOS ====================
+        with st.expander("🔍 Painel de Filtros Avançados (Obrigatório: Datas e Critérios Múltiplos)", expanded=True):
+            # Linha 1 de Filtros
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            with col_f1:
+                status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="d3_status")
+            with col_f2:
+                tipo_sel = st.multiselect("📂 Tipo de Lançamento", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist(), key="d3_tipo")
+            with col_f3:
+                categoria_sel = st.multiselect("🏷️ Categoria", df["Categoria"].unique().tolist(), default=df["Categoria"].unique().tolist(), key="d3_cat")
+            with col_f4:
+                conta_sel = st.multiselect("🏦 Conta / Instituição", df["Conta"].unique().tolist(), default=df["Conta"].unique().tolist(), key="d3_conta")
+
+            # Linha 2 de Filtros (Incluindo Datas e Valores)
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+            with col_d1:
+                data_inicio = st.date_input("📅 Data Inicial", df["Data"].min().date(), key="d3_ini")
+            with col_d2:
+                data_fim = st.date_input("📅 Data Final", df["Data"].max().date(), key="d3_fim")
+            with col_d3:
+                valor_min = st.number_input("💵 Valor Mínimo (R$)", min_value=0.0, value=0.0, step=100.0, key="d3_vmin")
+            with col_d4:
+                valor_max = st.number_input("💵 Valor Máximo (R$)", min_value=0.0, value=float(df["Valor"].max() if not df.empty else 1000.0), step=100.0, key="d3_vmax")
+
+        # Aplicação rigorosa dos filtros em cascata (Filtro de datas obrigatório na raiz)
+        df_filtrado = df[
+            (df["Data"].dt.date >= data_inicio) &
+            (df["Data"].dt.date <= data_fim) &
+            (df["Tipo"].isin(tipo_sel)) &
+            (df["Categoria"].isin(categoria_sel)) &
+            (df["Conta"].isin(conta_sel)) &
+            (df["Valor"] >= valor_min) &
+            (df["Valor"] <= valor_max)
+        ]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
         st.markdown("---")
 
-        # ==================== GRÁFICO EVOLUTIVO ====================
-        st.markdown("### 📈 Evolução Temporal")
-        df_time = df_filtrado.groupby("AnoMes").agg({"Valor":"sum"}).reset_index()
-        chart = alt.Chart(df_time).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", tooltip=["AnoMes","Valor"]
-        ).properties(height=350)
-        st.altair_chart(chart, use_container_width=True)
+        if not df_filtrado.empty:
+            # ==================== CÁLCULO DOS KPIs ESTRATÉGICOS ====================
+            entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+            saidas_cc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (~df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            cartao_passivo = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
+            transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
+            
+            total_despesas_gerais = saidas_cc + cartao_passivo
+            saldo_liquido = entradas - total_despesas_gerais
+            
+            ticket_medio_receita = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].mean() if entradas > 0 else 0.0
+            ticket_medio_despesa = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].mean() if total_despesas_gerais > 0 else 0.0
+            indice_cobertura = (entradas / total_despesas_gerais) if total_despesas_gerais > 0 else 0.0
 
+            st.markdown("### 📈 KPIs Executivos Principais")
+            col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
+            col_kpi1.metric("🟢 Entradas", f"R$ {entradas:,.2f}", delta="Receitas Totais")
+            col_kpi2.metric("🔴 Saídas (C/C)", f"R$ {saidas_cc:,.2f}", delta="Contas Correntes", delta_color="inverse")
+            col_kpi3.metric("💳 Passivo Cartões", f"R$ {cartao_passivo:,.2f}", delta="Fatura em Aberto", delta_color="inverse")
+            col_kpi4.metric("🔵 Transferências", f"R$ {transferencias:,.2f}", delta="Mov. Internas")
+            col_kpi5.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}", delta="Caixa Gerado", delta_color="normal")
+
+            # ==================== INDICADORES DE SAÚDE FINANCEIRA PESSOAL (23 KPIs) ====================
+            st.markdown("### 📌 Indicadores Avançados de Finanças Pessoais & Riqueza")
+
+            net_savings_rate = (saldo_liquido / entradas * 100) if entradas > 0 else 0.0
+            comprometimento_renda = (saidas_cc / entradas * 100) if entradas > 0 else 0.0
+            cash_ratio_val = (entradas / saidas_cc) if saidas_cc > 0 else 0.0
+            burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
+
+            # Cálculos comportamentais e de planejamento patrimonial
+            maior_gasto_cat = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum()
+            maior_gasto_valor = maior_gasto_cat.max() if not maior_gasto_cat.empty else 0.0
+            peso_maior_gasto = (maior_gasto_valor / total_despesas_gerais * 100) if total_despesas_gerais > 0 else 0.0
+
+            despesas_df = df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+            qtde_transacoes_despesa = len(despesas_df)
+            ticket_max_despesa = despesas_df["Valor"].max() if not despesas_df.empty else 0.0
+            peso_maior_transacao = (ticket_max_despesa / total_despesas_gerais * 100) if total_despesas_gerais > 0 else 0.0
+
+            dias_periodo = max(1, (data_fim - data_inicio).days + 1)
+            gasto_medio_diario = total_despesas_gerais / dias_periodo
+            renda_diaria = entradas / dias_periodo
+            dias_autonomia = (saldo_liquido / gasto_medio_diario) if gasto_medio_diario > 0 and saldo_liquido > 0 else 0.0
+
+            peso_cartao_despesa = (cartao_passivo / total_despesas_gerais * 100) if total_despesas_gerais > 0 else 0.0
+            indice_poupanca_bruta = max(0.0, net_savings_rate)
+
+            # Bloco 1: Saúde e Fluxo
+            col_i1, col_i2, col_i3, col_i4 = st.columns(4)
+            col_i1.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%", delta="Net Savings Rate")
+            col_i2.metric("📊 Comprometimento Renda", f"{comprometimento_renda:.1f}%", delta="Gastos / Receitas", delta_color="inverse")
+            col_i3.metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x", delta="Liquidez Corrente")
+            col_i4.metric("🔥 Burn Rate Diário", f"R$ {gasto_medio_diario:,.2f} / dia", delta="Velocidade de Gasto", delta_color="inverse")
+
+            # Bloco 2: Eficiência e Cobertura
+            col_i5, col_i6, col_i7, col_i8 = st.columns(4)
+            col_i5.metric("🎯 Índice de Cobertura", f"{indice_cobertura:.2f}x", delta="Entradas / Despesas")
+            col_i6.metric("🏷️ Ticket Médio Receita", f"R$ {ticket_medio_receita:,.2f}", delta="Por Entrada")
+            col_i7.metric("🏷️ Ticket Médio Despesa", f"R$ {ticket_medio_despesa:,.2f}", delta="Por Saída/Fatura")
+            col_i8.metric("📦 Volume de Lançamentos", f"{len(df_filtrado)} un.", delta="Filtro Ativo")
+
+            # Bloco 3: Concentração de Risco Pessoal
+            col_n1, col_n2, col_n3, col_n4 = st.columns(4)
+            col_n1.metric("💳 Dependência de Cartão", f"{peso_cartao_despesa:.1f}%", delta="Dos Gastos no Crédito", delta_color="inverse")
+            col_n2.metric("⚠️ Concentração de Categoria", f"{peso_maior_gasto:.1f}%", delta="Peso da Maior Categoria", delta_color="inverse")
+            col_n3.metric("⚡ Impacto Outlier", f"{peso_maior_transacao:.1f}%", delta="Maior Gasto vs Total", delta_color="inverse")
+            col_n4.metric("⏳ Autonomia de Caixa", f"{dias_autonomia:.0f} dias", delta="Fôlego com o Saldo Atual")
+
+            # Bloco 4: Dinâmica Diária e Esforço
+            col_n5, col_n6, col_n7, col_n8 = st.columns(4)
+            col_n5.metric("☀️ Geração Diária", f"R$ {renda_diaria:,.2f} / dia", delta="Entrada Média Diária")
+            col_n6.metric("📉 Maior Gasto Único", f"R$ {ticket_max_despesa:,.2f}", delta="Pico de Despesa")
+            col_n7.metric("🏃‍♂️ Frequência de Gastos", f"{(qtde_transacoes_despesa / (dias_periodo/30)):.1f}x", delta="Saídas por Mês (Média)")
+            col_n8.metric("🌱 Índice de Retenção", f"{indice_poupanca_bruta:.1f}%", delta="Efetividade de Guardar")
+
+            # Bloco 5: Métricas Finais de Consistência
+            col_n9, col_n10, col_n11 = st.columns(3)
+            col_n9.metric("📋 Média de Lanç./Dia", f"{(len(df_filtrado) / dias_periodo):.2f}", delta="Densidade de Registros")
+            col_n10.metric("⚖️ Relação Transacional", f"{(len(df_filtrado[df_filtrado['Tipo']=='Receita']) / max(1, qtde_transacoes_despesa)):.2f}x", delta="Entradas vs Saídas")
+            col_n11.metric("🛡️ Fator de Resiliência", f"{min(100.0, (cash_ratio_val * 50)):.1f} pts", delta="Score de Fôlego Pessoal")
+
+            st.markdown("---")
+
+            # ==================== ABAS DE VISUALIZAÇÃO INTERNA ====================
+            tab_vis1, tab_vis2, tab_vis3, tab_vis4 = st.tabs(["📂 Consolidado Estrutural", "📊 Gráficos de Evolução", "📈 Curva ABC & Top Gastos", "📄 Detalhamento Analítico"])
+
+            with tab_vis1:
+                st.markdown("### 📂 Visão Consolidada por Categoria")
+                df_cat_sum = df_filtrado.groupby(["Categoria", "Tipo"])["Valor"].sum().reset_index().sort_values("Valor", ascending=False)
+                df_cat_sum["Valor_Fmt"] = df_cat_sum["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+                st.dataframe(aplicar_estilo_tabela(df_cat_sum[["Tipo", "Categoria", "Valor_Fmt"]].style), use_container_width=True)
+
+                st.markdown("### 🏦 Visão Consolidada por Conta / Instituição")
+                df_acc_sum = df_filtrado.groupby(["Conta", "Tipo"])["Valor"].sum().reset_index().sort_values("Valor", ascending=False)
+                df_acc_sum["Valor_Fmt"] = df_acc_sum["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+                st.dataframe(aplicar_estilo_tabela(df_acc_sum[["Tipo", "Conta", "Valor_Fmt"]].style), use_container_width=True)
+
+            with tab_vis2:
+                st.markdown("### 📈 Evolução Temporal Consolidada")
+                df_time = df_filtrado.groupby(["AnoMes", "Tipo"])["Valor"].sum().reset_index()
+                
+                chart_evolucao = alt.Chart(df_time).mark_line(strokeWidth=3, point=True).encode(
+                    x=alt.X("AnoMes:N", title="Mês / Ano"),
+                    y=alt.Y("Valor:Q", title="Montante (R$)"),
+                    color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Receita", "Despesa", "Transferência"], range=["#2a9d8f", "#e76f51", "#264653"]), title="Tipo"),
+                    tooltip=["AnoMes", "Tipo", "Valor"]
+                ).properties(height=380).interactive()
+                st.altair_chart(chart_evolucao, use_container_width=True)
+
+            with tab_vis3:
+                st.markdown("### 📉 Curva ABC de Despesas (Impacto Orçamentário)")
+                df_abc = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+                if not df_abc.empty:
+                    df_abc = df_abc.sort_values(by="Valor", ascending=False)
+                    df_abc["Acumulado_%"] = (df_abc["Valor"].cumsum() / df_abc["Valor"].sum()) * 100
+
+                    base_abc = alt.Chart(df_abc).encode(x=alt.X("Categoria:N", sort="-y", title="Categoria"))
+                    bar_abc = base_abc.mark_bar(color="#264653").encode(y=alt.Y("Valor:Q", title="Gasto Total (R$)"), tooltip=["Categoria", "Valor"])
+                    line_abc = base_abc.mark_line(strokeWidth=3, color="#e76f51", point=True).encode(y=alt.Y("Acumulado_%:Q", title="Acumulado (%)", scale=alt.Scale(domain=[0, 105])))
+                    chart_abc = alt.layer(bar_abc, line_abc).resolve_scale(y="independent").properties(height=380).interactive()
+                    st.altair_chart(chart_abc, use_container_width=True)
+                else:
+                    st.info("Não há despesas suficientes no filtro selecionado para compor a Curva ABC.")
+
+            with tab_vis4:
+                st.markdown("### 📄 Detalhamento Bruto dos Lançamentos Filtrados")
+                df_detalhe = df_filtrado[["Tipo", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Status"]].copy()
+                df_detalhe["Valor_Fmt"] = df_detalhe["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+                st.dataframe(aplicar_estilo_tabela(df_detalhe[["Tipo", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor_Fmt", "Data", "Status"]].style), use_container_width=True)
+
+                # Botão de exportação rápida para CSV do filtro atual
+                csv_export = df_filtrado.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Baixar Dados Filtrados (CSV)",
+                    data=csv_export,
+                    file_name=f"dashboard3_pessoal_{datetime.today().strftime('%Y-%m-%d')}.csv",
+                    mime="text/csv"
+                )
+        else:
+            st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados (verifique o intervalo de datas ou os critérios de busca aplicados).")
     else:
-        st.info("Nenhum lançamento disponível para exibir no Dashboard 3.")
+        st.info("Nenhum lançamento disponível na base de dados para exibir no Dashboard 3.")
 
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
