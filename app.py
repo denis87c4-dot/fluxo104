@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 2", "Monthly Audit",
+    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -973,6 +973,134 @@ elif aba == "Projections & Charts":
         
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
+
+elif aba == "Monthly Audit 3":
+    st.subheader("📊 Monthly Audit 3 - Auditoria Detalhada por Categoria")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        # Tratamento inicial
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros organizados
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
+        with col_f2:
+            categoria_sel = st.multiselect("🏷️ Categoria", df["Categoria"].unique().tolist(), default=df["Categoria"].unique().tolist())
+        with col_f3:
+            periodo_sel = st.date_input("📅 Período até", df["Data"].max().date())
+
+        # Aplicação dos filtros
+        df_filtrado = df[df["Data"].dt.date <= periodo_sel]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+        if categoria_sel:
+            df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(categoria_sel)]
+
+        st.markdown("---")
+
+        # KPIs gerais com mini-gráficos
+        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        saidas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].sum()
+        transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
+        saldo_liquido = entradas - saidas
+
+        col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+        with col_kpi1:
+            st.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+            spark_entradas = df_filtrado[df_filtrado["Tipo"]=="Receita"].groupby("AnoMes")["Valor"].sum().reset_index()
+            st.altair_chart(alt.Chart(spark_entradas).mark_line().encode(x="AnoMes:N", y="Valor:Q"), use_container_width=True)
+        with col_kpi2:
+            st.metric("🔴 Saídas", f"R$ {saidas:,.2f}", delta_color="inverse")
+            spark_saidas = df_filtrado[df_filtrado["Tipo"]=="Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
+            st.altair_chart(alt.Chart(spark_saidas).mark_line(color="red").encode(x="AnoMes:N", y="Valor:Q"), use_container_width=True)
+        with col_kpi3:
+            st.metric("🔵 Transferências", f"R$ {transferencias:,.2f}")
+            spark_transf = df_filtrado[df_filtrado["Tipo"]=="Transferência"].groupby("AnoMes")["Valor"].sum().reset_index()
+            st.altair_chart(alt.Chart(spark_transf).mark_line(color="blue").encode(x="AnoMes:N", y="Valor:Q"), use_container_width=True)
+        with col_kpi4:
+            st.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+            spark_saldo = df_filtrado.groupby("AnoMes").apply(lambda g: g[g["Tipo"]=="Receita"]["Valor"].sum() - g[g["Tipo"]=="Despesa"]["Valor"].sum()).reset_index(name="Saldo")
+            st.altair_chart(alt.Chart(spark_saldo).mark_line(color="green").encode(x="AnoMes:N", y="Saldo:Q"), use_container_width=True)
+
+        st.markdown("---")
+
+        # Subtotais por categoria com sparklines
+        st.markdown("### 📂 Subtotais por Categoria com Tendência")
+        df_cat_sum = df_filtrado.groupby("Categoria")["Valor"].sum().reset_index().sort_values("Valor", ascending=False)
+
+        df_line_cat = df_filtrado[df_filtrado["Tipo"] == "Despesa"].copy()
+        df_line_cat["AnoMes"] = df_line_cat["Data"].dt.to_period("M").astype(str)
+        df_line_group_cat = df_line_cat.groupby(["AnoMes", "Categoria"])["Valor"].sum().reset_index()
+
+        for _, row in df_cat_sum.iterrows():
+            categoria = row["Categoria"]
+            valor_total = row["Valor"]
+
+            st.markdown(f"**{categoria}** — Total: R$ {valor_total:,.2f}")
+            df_cat_trend = df_line_group_cat[df_line_group_cat["Categoria"] == categoria]
+
+            chart_spark = alt.Chart(df_cat_trend).mark_line(point=True).encode(
+                x=alt.X("AnoMes:N", title=""),
+                y=alt.Y("Valor:Q", title=""),
+                tooltip=["AnoMes", "Valor"]
+            ).properties(height=80)
+
+            st.altair_chart(chart_spark, use_container_width=True)
+
+        st.markdown("---")
+
+        # Indicadores executivos por categoria
+        st.markdown("### 📌 Indicadores Executivos por Categoria")
+        total_receitas = entradas
+        total_despesas = saidas
+
+        df_indicadores = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+        df_indicadores["% da Renda"] = df_indicadores["Valor"].apply(lambda x: (x / total_receitas * 100) if total_receitas > 0 else 0.0)
+        df_indicadores["% das Despesas"] = df_indicadores["Valor"].apply(lambda x: (x / total_despesas * 100) if total_despesas > 0 else 0.0)
+
+        st.dataframe(df_indicadores, use_container_width=True)
+
+        # Ranking das categorias mais críticas
+        st.markdown("### 🚨 Top 3 Categorias Críticas (Maior Impacto na Renda)")
+        df_rank = df_indicadores.sort_values("% da Renda", ascending=False).head(3)
+        for _, row in df_rank.iterrows():
+            st.markdown(f"- **{row['Categoria']}** → {row['% da Renda']:.1f}% da renda comprometida")
+
+        st.markdown("---")
+
+        # Detalhamento das transações
+        st.markdown("### 🧾 Transações Detalhadas")
+        st.dataframe(df_filtrado[["Data", "Descricao", "Categoria", "Conta", "Valor"]].sort_values("Data"), use_container_width=True)
+
+        # Gráfico de barras por categoria
+        st.markdown("### 📊 Distribuição de Gastos por Categoria")
+        chart_cat = alt.Chart(df_filtrado[df_filtrado["Tipo"] == "Despesa"]).mark_bar().encode(
+            x="Categoria:N", y="Valor:Q", color="Categoria:N", tooltip=["Categoria", "Valor"]
+        ).properties(height=400)
+        st.altair_chart(chart_cat, use_container_width=True)
+
+        # Gráfico de linha: evolução temporal por categoria
+        st.markdown("### 📈 Evolução Temporal por Categoria")
+        df_line = df_filtrado[df_filtrado["Tipo"] == "Despesa"].copy()
+        df_line["AnoMes"] = df_line["Data"].dt.to_period("M").astype(str)
+
+        df_line_group = df_line.groupby(["AnoMes", "Categoria"])["Valor"].sum().reset_index()
+
+        chart_line = alt.Chart(df_line_group).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("AnoMes:N", title="Mês/Ano", sort="ascending"),
+            y=alt.Y("Valor:Q", title="Total (R$)"),
+            color=alt.Color("Categoria:N", title="Categoria"),
+            tooltip=["AnoMes", "Categoria", "Valor"]
+        ).properties(height=400).interactive()
+
+        st.altair_chart(chart_line, use_container_width=True)
+
+    else:
+        st.info("Nenhum lançamento registrado para exibir auditoria detalhada.")
 
 elif aba == "Monthly Audit 2":
     st.subheader("📋 Monthly Audit 2 - Painel Avançado")
