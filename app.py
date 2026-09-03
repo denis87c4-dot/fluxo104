@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
+    "Dashboard", "Dashboard 2", "Dashboard 3", "Dashboard 4", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -615,6 +615,248 @@ elif aba == "Dashboard 3":
             st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados (verifique o intervalo de datas ou os critérios de busca aplicados).")
     else:
         st.info("Nenhum lançamento disponível na base de dados para exibir no Dashboard 3.")
+
+elif aba == "Dashboard 4":
+  st.subheader("🚀 Dashboard 4 - Painel Dinâmico, Track & Projeção")
+  st.markdown(
+      "Visão executiva integrada: acompanhe o seu momento atual (Track) e o"
+      " comportamento preditivo do seu caixa (Projeção)."
+  )
+
+  df = st.session_state.lancamentos
+  if not df.empty:
+    # Tratamento de dados essenciais
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+    cartoes_nomes = (
+        st.session_state.cartoes["Nome"].tolist()
+        if not st.session_state.cartoes.empty
+        else []
+    )
+
+    # ==================== FILTROS DINÂMICOS DE TOPO ====================
+    with st.container():
+      col_f1, col_f2 = st.columns(2)
+      with col_f1:
+        meses_disp = sorted(df["AnoMes"].unique().tolist(), reverse=True)
+        mes_d4 = st.selectbox(
+            "📅 Mês de Referência (Dinâmico)", meses_disp, key="d4_mes"
+        )
+      with col_f2:
+        status_d4 = st.selectbox(
+            "📌 Status do Lançamento",
+            ["Todos", "Efetivado", "Budget"],
+            key="d4_status",
+        )
+
+    # Filtragem do DataFrame para o mês selecionado
+    ano_d4, mes_d4_num = map(int, mes_d4.split("-"))
+    df_d4 = df[
+        (df["Data"].dt.year == ano_d4) & (df["Data"].dt.month == mes_d4_num)
+    ]
+    if status_d4 != "Todos":
+      df_d4 = df_d4[df_d4["Status"] == status_d4]
+
+    st.markdown("---")
+
+    if not df_d4.empty:
+      # ==================== 1. SEÇÃO TRACK & PROJEÇÃO GERAL ====================
+      st.markdown("### 📈 Track vs Projeção do Período")
+
+      hoje = pd.Timestamp.today()
+      # Separação considerando o dia de hoje para o mês em foco
+      df_realizado = df_d4[df_d4["Data"] <= hoje]
+      df_projetado = df_d4[df_d4["Data"] > hoje]
+
+      rec_real = df_realizado[df_realizado["Tipo"] == "Receita"]["Valor"].sum()
+      desp_real = df_realizado[df_realizado["Tipo"] == "Despesa"][
+          "Valor"
+      ].sum()
+      track_atual = rec_real - desp_real
+
+      rec_proj = df_projetado[df_projetado["Tipo"] == "Receita"]["Valor"].sum()
+      desp_proj = df_projetado[df_projetado["Tipo"] == "Despesa"][
+          "Valor"
+      ].sum()
+      saldo_final_projetado = track_atual + rec_proj - desp_proj
+
+      tp1, tp2, tp3 = st.columns(3)
+      tp1.metric(
+          "📍 Track (Realizado até Hoje)",
+          f"R$ {track_atual:,.2f}",
+          delta="Posição Atual",
+      )
+      tp2.metric(
+          "🔮 Projeção Futura (A Vencer)",
+          f"R$ {rec_proj - desp_proj:,.2f}",
+          delta="Saldo Restante do Mês",
+      )
+      tp3.metric(
+          "💎 Previsão de Fechamento",
+          f"R$ {saldo_final_projetado:,.2f}",
+          delta="Como vai ficar",
+          delta_color="normal",
+      )
+
+      st.markdown("---")
+
+      # ==================== 2. MÉTRICAS DINÂMICAS DO MÊS ====================
+      rec_d4 = df_d4[df_d4["Tipo"] == "Receita"]["Valor"].sum()
+      desp_cc_d4 = df_d4[
+          (df_d4["Tipo"] == "Despesa")
+          & (~df_d4["Conta"].isin(cartoes_nomes))
+      ]["Valor"].sum()
+      desp_card_d4 = df_d4[
+          (df_d4["Tipo"] == "Despesa") & (df_d4["Conta"].isin(cartoes_nomes))
+      ]["Valor"].sum()
+      liquido_d4 = rec_d4 - desp_cc_d4
+
+      c1, c2, c3, c4 = st.columns(4)
+      c1.metric("📥 Entradas do Mês", f"R$ {rec_d4:,.2f}", delta="Receitas")
+      c2.metric(
+          "📤 Despesas Correntes",
+          f"R$ {desp_cc_d4:,.2f}",
+          delta="C/C",
+          delta_color="inverse",
+      )
+      c3.metric(
+          "💳 Faturas / Cartões",
+          f"R$ {desp_card_d4:,.2f}",
+          delta="Passivo",
+          delta_color="inverse",
+      )
+      c4.metric(
+          "💎 Líquido do Mês",
+          f"R$ {liquido_d4:,.2f}",
+          delta="Disponível",
+          delta_color="normal",
+      )
+
+      st.markdown("---")
+
+      # ==================== 3. GRÁFICOS DINÂMICOS LADO A LADO ====================
+      col_g1, col_g2 = st.columns(2)
+
+      with col_g1:
+        st.markdown("### 📊 Evolução Diária Dinâmica do Caixa")
+        df_diario = (
+            df_d4.groupby(df_d4["Data"].dt.day)
+            .agg(
+                Receita=(
+                    "Valor",
+                    lambda x: df_d4.loc[x.index][
+                        df_d4["Tipo"] == "Receita"
+                    ]["Valor"].sum(),
+                ),
+                Despesa=(
+                    "Valor",
+                    lambda x: df_d4.loc[x.index][
+                        df_d4["Tipo"] == "Despesa"
+                    ]["Valor"].sum(),
+                ),
+            )
+            .reset_index()
+        )
+
+        if not df_diario.empty:
+          df_melt_diario = df_diario.melt(
+              id_vars="Data",
+              value_vars=["Receita", "Despesa"],
+              var_name="Fluxo",
+              value_name="Montante",
+          )
+          chart_diario = (
+              alt.Chart(df_melt_diario)
+              .mark_bar(opacity=0.8, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+              .encode(
+                  x=alt.X("Data:O", title="Dia do Mês"),
+                  y=alt.Y("Montante:Q", title="Valor (R$)"),
+                  color=alt.Color(
+                      "Fluxo:N",
+                      scale=alt.Scale(
+                          domain=["Receita", "Despesa"],
+                          range=["#2a9d8f", "#e76f51"],
+                      ),
+                  ),
+                  tooltip=["Data", "Fluxo", "Montante"],
+              )
+              .properties(height=300)
+              .interactive()
+          )
+          st.altair_chart(chart_diario, use_container_width=True)
+        else:
+          st.info("Sem dados diários suficientes para este mês.")
+
+      with col_g2:
+        st.markdown("### 🍩 Composição Dinâmica por Categoria")
+        df_cat_d4 = (
+            df_d4[df_d4["Tipo"] == "Despesa"]
+            .groupby("Categoria")["Valor"]
+            .sum()
+            .reset_index()
+        )
+
+        if not df_cat_d4.empty:
+          chart_donut = (
+              alt.Chart(df_cat_d4)
+              .mark_arc(innerRadius=60, outerRadius=105)
+              .encode(
+                  theta=alt.Theta("Valor:Q"),
+                  color=alt.Color(
+                      "Categoria:N", scale=alt.Scale(scheme="tableau10")
+                  ),
+                  tooltip=["Categoria", "Valor"],
+              )
+              .properties(height=300)
+              .interactive()
+          )
+          st.altair_chart(chart_donut, use_container_width=True)
+        else:
+          st.info("Nenhuma despesa registrada nas categorias para este período.")
+
+      st.markdown("---")
+
+      # ==================== 4. TABELA DINÂMICA INTERATIVA ====================
+      st.markdown("### 📋 Feed Dinâmico de Transações do Período")
+      df_feed = df_d4[
+          [
+              "Tipo",
+              "Status",
+              "Descricao",
+              "Categoria",
+              "Conta",
+              "Valor",
+              "Data",
+          ]
+      ].copy()
+      df_feed["Valor_Fmt"] = df_feed["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+      st.dataframe(
+          aplicar_estilo_tabela(
+              df_feed[
+                  [
+                      "Tipo",
+                      "Status",
+                      "Descricao",
+                      "Categoria",
+                      "Conta",
+                      "Valor_Fmt",
+                      "Data",
+                  ]
+              ].style
+          ),
+          use_container_width=True,
+      )
+
+    else:
+      st.warning(
+          f"⚠️ Não há registros encontrados para o período {mes_d4} com o"
+          f" status '{status_d4}'."
+      )
+  else:
+    st.info("A base de dados de lançamentos está vazia.")
+
 
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
