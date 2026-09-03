@@ -2012,124 +2012,121 @@ elif aba == "Cadastro (Form)":
             st.success(f"Lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
-    st.subheader("Lista de Lançamentos & Smart Search (Gerenciamento)")
-    st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente e gerenciar cada registro (Editar ou Deletar).")
-    
-    if st.button("💾 Salvar Backup Agora"):
-        salvar_backup()
-        
-    df = st.session_state.lancamentos
-    if not df.empty:
-        col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
-        with col_s1:
-            termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
-        with col_s2:
-            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa", "Transferência"])
-        with col_s3:
-            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado"])
-            
-        df_filtrado = df.copy()
-        
-        if filtro_tipo != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
-        if filtro_status != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
-            
-        if termo_busca.strip() != "":
-            termo = termo_busca.strip().lower()
-            mask = (
-                df_filtrado["Descricao"].astype(str).str.lower().str.contains(termo, na=False) |
-                df_filtrado["Categoria"].astype(str).str.lower().str.contains(termo, na=False) |
-                df_filtrado["Conta"].astype(str).str.lower().str.contains(termo, na=False)
-            )
-            df_filtrado = df_filtrado[mask]
-            
-        st.markdown(f"Exibindo **{len(df_filtrado)}** de **{len(df)}** registros encontrados.")
-        
-        if not df_filtrado.empty:
-            for idx, row in df_filtrado.iterrows():
-                with st.expander(f"[{row['Tipo']}] {row['Data']} - {row['Descricao']} | R$ {row['Valor']:,.2f} ({row['Status']})"):
-                    col_det1, col_det2 = st.columns(2)
-                    with col_det1:
-                        st.write(f"**Categoria:** {row['Categoria']}")
-                        st.write(f"**Conta (Saída):** {row['Conta']}")
-                        if row["Tipo"] == "Transferência":
-                            st.write(f"**Conta Destino:** {row.get('ContaDestino', '')}")
-                    with col_det2:
-                        st.write(f"**Parcela:** {row['Parcela']}")
-                        st.write(f"**Status:** {row['Status']}")
-                    
-                    col_btn1, col_btn2 = st.columns(2)
-                    with col_btn1:
-                        if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
-                            st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
-                            salvar_backup()
-                            st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
-                            st.success("Lançamento deletado com sucesso!")
-                            st.rerun()
-                    with col_btn2:
-                        edit_key = f"editar_toggle_{idx}"
-                        if st.button("✏️ Editar Lançamento", key=f"edit_btn_{idx}"):
-                            st.session_state[edit_key] = not st.session_state.get(edit_key, False)
-                    
-                    if st.session_state.get(f"editar_toggle_{idx}", False):
-                        with st.form(key=f"form_edit_{idx}"):
-                            st.markdown(f"### Editando Registro #{idx}")
-                            tipos_disp = ["Despesa", "Receita", "Transferência"]
-                            idx_tipo = tipos_disp.index(row["Tipo"]) if row["Tipo"] in tipos_disp else 0
-                            novo_tipo = st.selectbox("Tipo", tipos_disp, index=idx_tipo, key=f"et_{idx}")
-                            novo_status = st.selectbox("Status", ["Budget", "Efetivado"], index=0 if row["Status"] == "Budget" else 1, key=f"es_{idx}")
-                            nova_desc = st.text_input("Descrição", value=row["Descricao"], key=f"ed_{idx}")
-                            
-                            idx_cat = st.session_state.categorias.index(row["Categoria"]) if row["Categoria"] in st.session_state.categorias else 0
-                            nova_cat = st.selectbox("Categoria", st.session_state.categorias, index=idx_cat, key=f"ec_{idx}")
-                            
-                            contas_possiveis = ["Cash husband", "Nubank"]
-                            if not st.session_state.cartoes.empty:
-                                contas_possiveis.extend(st.session_state.cartoes["Nome"].tolist())
-                            idx_conta = contas_possiveis.index(row["Conta"]) if row["Conta"] in contas_possiveis else 0
-                            nova_conta = st.selectbox("Conta (Saída)", contas_possiveis, index=idx_conta, key=f"econta_{idx}")
-                            
-                            nova_conta_dest = ""
-                            if novo_tipo == "Transferência":
-                                idx_conta_dest = contas_possiveis.index(row.get("ContaDestino", "")) if row.get("ContaDestino", "") in contas_possiveis else 0
-                                nova_conta_dest = st.selectbox("Conta Destino", contas_possiveis, index=idx_conta_dest, key=f"econta_dest_{idx}")
+  st.subheader("💳 Gestão e Baixa de Lançamentos por Dia")
+  st.markdown(
+      "Acompanhe o volume diário de transações, altere status e realize baixas"
+      " parciais ou totais."
+  )
 
-                            novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), format="%.2f", key=f"ev_{idx}")
-                            
-                            try:
-                                data_parsed = datetime.strptime(str(row["Data"]).split()[0], "%Y-%m-%d").date()
-                            except:
-                                data_parsed = datetime.today().date()
-                            nova_data = st.date_input("Data", value=data_parsed, key=f"edata_{idx}")
-                            
-                            salvar_edicao = st.form_submit_button("💾 Salvar Alterações", type="primary")
-                            if salvar_edicao:
-                                st.session_state.lancamentos.loc[idx, "Tipo"] = novo_tipo
-                                st.session_state.lancamentos.loc[idx, "Status"] = novo_status
-                                st.session_state.lancamentos.loc[idx, "Descricao"] = nova_desc
-                                st.session_state.lancamentos.loc[idx, "Categoria"] = nova_cat
-                                st.session_state.lancamentos.loc[idx, "Conta"] = nova_conta
-                                st.session_state.lancamentos.loc[idx, "ContaDestino"] = nova_conta_dest if novo_tipo == "Transferência" else ""
-                                st.session_state.lancamentos.loc[idx, "Valor"] = float(novo_valor)
-                                st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
-                                
-                                salvar_backup()
-                                st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
-                                
-                                st.session_state[edit_key] = False
-                                st.success("Lançamento atualizado com sucesso!")
-                                st.rerun()
-        else:
-            st.warning("Nenhum lançamento corresponde ao filtro ou Smart Search informado.")
-            
-        st.markdown("---")
-        if st.button("🗑️ Limpar Todos os Lançamentos"):
-            st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
-            salvar_backup()
-            st.rerun()
-    else:
-        st.write("Nenhum registro encontrado.")
+  df = st.session_state.lancamentos
+
+  if not df.empty:
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+
+    # Ordenar por data decrescente
+    df = df.sort_values(by="Data", ascending=False)
+    df["DataStr"] = df["Data"].dt.strftime("%d/%m/%Y")
+    dias_unicos = df["DataStr"].unique()
+
+    for dia in dias_unicos:
+      df_dia = df[df["DataStr"] == dia]
+      qtd_lancamentos = len(df_dia)
+      total_dia = df_dia["Valor"].sum()
+
+      # Expansor para cada dia mostrando o resumo e a quantidade de lançamentos
+      with st.expander(
+          f"📅 {dia} — {qtd_lancamentos} lançamento(s) | Total: R$"
+          f" {total_dia:,.2f}"
+      ):
+        for index, row in df_dia.iterrows():
+          cols = st.columns([3, 2, 2, 2])
+
+          with cols[0]:
+            st.markdown(
+                f"**{row['Descricao']}**\n\n*Cat:* {row['Categoria']} | *Conta:* "
+                f"{row['Conta']}"
+            )
+
+          with cols[1]:
+            st.markdown(f"**R$ {row['Valor']:,.2f}**")
+            st.caption(f"Tipo: {row['Tipo']}")
+
+          with cols[2]:
+            status_atual = row.get("Status", "Budget")
+            novo_status = st.selectbox(
+                "Status",
+                ["Budget", "Efetivado", "Parcial"],
+                index=(
+                    0
+                    if status_atual == "Budget"
+                    else (1 if status_atual == "Efetivado" else 2)
+                ),
+                key=f"status_lanc_{index}",
+            )
+            if novo_status != status_atual:
+              st.session_state.lancamentos.at[index, "Status"] = novo_status
+              st.rerun()
+
+          with cols[3]:
+            if st.button("💸 Pagar / Baixar", key=f"btn_pg_lanc_{index}"):
+              st.session_state[f"modal_pg_{index}"] = not st.session_state.get(
+                  f"modal_pg_{index}", False
+              )
+
+          # Painel de Baixa Parcial / Total por item
+          if st.session_state.get(f"modal_pg_{index}", False):
+            with st.container():
+              st.info(
+                  f"Painel de Baixa para: **{row['Descricao']}** (Saldo Atual:"
+                  f" R$ {row['Valor']:,.2f})"
+              )
+              col_p1, col_p2, col_p3 = st.columns(3)
+
+              with col_p1:
+                valor_pago_agora = st.number_input(
+                    "Valor a Pagar Agora (R$)",
+                    min_value=0.0,
+                    max_value=float(row["Valor"]),
+                    value=float(row["Valor"]),
+                    key=f"val_parcial_lanc_{index}",
+                )
+
+              with col_p2:
+                forma_pgto = st.selectbox(
+                    "Forma de Pagamento",
+                    ["PIX", "Dinheiro", "Débito", "Transferência", "Crédito"],
+                    key=f"forma_parcial_lanc_{index}",
+                )
+
+              with col_p3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button(
+                    "Confirmar Baixa", key=f"conf_parcial_lanc_{index}"
+                ):
+                  if valor_pago_agora < row["Valor"]:
+                    # Pagamento Parcial: atualiza o saldo restante do item
+                    st.session_state.lancamentos.at[index, "Valor"] = (
+                        row["Valor"] - valor_pago_agora
+                    )
+                    st.session_state.lancamentos.at[index, "Status"] = "Parcial"
+                    st.success(
+                        f"Baixa parcial de R$ {valor_pago_agora:,.2f} efetuada!"
+                        f" Restam R$ {row['Valor'] - valor_pago_agora:,.2f}."
+                    )
+                  else:
+                    # Pagamento Total
+                    st.session_state.lancamentos.at[index, "Status"] = (
+                        "Efetivado"
+                    )
+                    st.success("Lançamento totalmente quitado!")
+
+                  st.session_state[f"modal_pg_{index}"] = False
+                  st.rerun()
+
+          st.markdown("---")
+  else:
+    st.info("Nenhum lançamento cadastrado para gerenciar.")
 
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
