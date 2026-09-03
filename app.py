@@ -273,45 +273,6 @@ if aba == "Dashboard":
         pivot_hist = df_hist.pivot_table(
             index="AnoMes",
             values=["Income_Val", "Expense_CC", "Expense_Card"],
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
-
-        pivot_hist = pivot_hist.rename(columns={
-            "AnoMes": "Mês",
-            "Income_Val": "Income",
-            "Expense_CC": "Expense (C/C)",
-            "Expense_Card": "Passivo Cartão"
-        })
-
-        pivot_hist = pivot_hist.sort_values("Mês").reset_index(drop=True)
-        pivot_hist["Cash Flow"] = pivot_hist["Income"] - pivot_hist["Expense (C/C)"]
-        pivot_hist["Acumulado"] = pivot_hist["Cash Flow"].cumsum()
-
-        pivot_hist_fmt = pivot_hist.copy()
-        for col in ["Income", "Expense (C/C)", "Passivo Cartão", "Cash Flow", "Acumulado"]:
-            pivot_hist_fmt[col] = pivot_hist_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-
-        st.dataframe(
-            aplicar_estilo_tabela(pivot_hist_fmt.set_index("Mês").style, subset=["Cash Flow", "Acumulado"]),
-            use_container_width=True
-        )
-
-        st.markdown("---")
-        st.markdown("### 📈 Gráficos Comparativos de Evolução")
-        
-        col_g1, col_g2 = st.columns(2)
-        
-        with col_g1:
-            st.markdown("#### 1️⃣ Income vs Expense (C/C) vs Cartão")
-            df_melt_ie = pivot_hist.melt(id_vars="Mês", value_vars=["Income", "Expense (C/C)", "Passivo Cartão"], var_name="Métrica", value_name="Valor")
-            chart_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
-                x=alt.X('Mês:N', title='Mês'),
-                y=alt.Y('Valor:Q', title='Montante (R$)'),
-                color=alt.Color('Métrica:N', scale=alt.Scale(domain=['Income', 'Expense (C/C)', 'Passivo Cartão'], range=['#2a9d8f', '#e76f51', '#f4a261']), title='Legenda'),
-                tooltip=['Mês', 'Métrica', 'Valor']
-            ).properties(height=320).interactive()
-            st.altair_chart(chart_ie, use_container_width=True)
 
 if aba == "Dashboard":
     st.subheader("📊 Executive Dashboard")
