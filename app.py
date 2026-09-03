@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Graphics", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
+    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -973,128 +973,6 @@ elif aba == "Projections & Charts":
         
     else:
         st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
-
-elif aba == "Graphics":
-    st.subheader("📊 Graphics - 19 Visualizações Avançadas")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        # Conversões
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        # 🔎 Filtros
-        st.markdown("### 🔎 Filtros")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            data_inicio = st.date_input("Data início", df["Data"].min().date())
-        with col2:
-            data_fim = st.date_input("Data fim", df["Data"].max().date())
-        with col3:
-            status = st.selectbox("Status", ["Todos"] + df["Status"].unique().tolist())
-
-        budget = st.checkbox("Mostrar apenas lançamentos de Budget")
-        efetivado = st.checkbox("Mostrar apenas lançamentos Efetivados")
-
-        # Aplicar filtros
-        df_filtrado = df[(df["Data"].dt.date >= data_inicio) & (df["Data"].dt.date <= data_fim)]
-        if status != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status]
-        if budget:
-            df_filtrado = df_filtrado[df_filtrado["Budget"] == True]
-        if efetivado:
-            df_filtrado = df_filtrado[df_filtrado["Efetivado"] == True]
-
-        # Funções auxiliares
-        def projecao_cenarios(df_series, col_val="Valor"):
-            df_series["Index"] = range(len(df_series))
-            coef = np.polyfit(df_series["Index"], df_series[col_val], 1)
-            df_series["Forecast"] = np.polyval(coef, df_series["Index"])
-            df_series["Optimistic"] = df_series["Forecast"] * 1.10
-            df_series["Pessimistic"] = df_series["Forecast"] * 0.90
-            return df_series
-
-        def fan_chart(df_series, col_val="Valor", n_sim=1000, noise_factor=0.25):
-            sim_data = []
-            for i in range(n_sim):
-                noise = np.random.normal(0, df_series[col_val].std()*noise_factor, len(df_series))
-                sim = df_series["Forecast"] + noise
-                sim_data.append(sim)
-            sim_matrix = np.vstack(sim_data)
-            df_fan = pd.DataFrame({
-                "AnoMes": df_series["AnoMes"],
-                "p5": np.percentile(sim_matrix, 5, axis=0),
-                "p25": np.percentile(sim_matrix, 25, axis=0),
-                "p50": np.percentile(sim_matrix, 50, axis=0),
-                "p75": np.percentile(sim_matrix, 75, axis=0),
-                "p95": np.percentile(sim_matrix, 95, axis=0),
-            })
-            return df_fan
-
-        # -------------------------------
-        # Exemplos de gráficos (1, 2, 5, 14, 19)
-        # Você pode replicar a mesma lógica para os demais (até 19)
-
-        # 1️⃣ Receitas com Fan Chart
-        st.markdown("#### 1️⃣ Receitas com Fan Chart")
-        receitas = df_filtrado[df_filtrado["Tipo"]=="Receita"].groupby("AnoMes")["Valor"].sum().reset_index()
-        receitas = projecao_cenarios(receitas)
-        df_fan_rec = fan_chart(receitas, col_val="Valor")
-        chart1 = alt.Chart(df_fan_rec).mark_area(opacity=0.2, color="orange").encode(y="p5", y2="p95", x="AnoMes") + \
-                 alt.Chart(df_fan_rec).mark_area(opacity=0.3, color="green").encode(y="p25", y2="p75", x="AnoMes") + \
-                 alt.Chart(df_fan_rec).mark_line(color="red").encode(y="p50", x="AnoMes") + \
-                 alt.Chart(receitas).mark_line(color="blue").encode(x="AnoMes", y="Valor")
-        st.altair_chart(chart1, use_container_width=True)
-
-        # 2️⃣ Despesas com Fan Chart
-        st.markdown("#### 2️⃣ Despesas com Fan Chart")
-        despesas = df_filtrado[df_filtrado["Tipo"]=="Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
-        despesas = projecao_cenarios(despesas)
-        df_fan_desp = fan_chart(despesas, col_val="Valor")
-        chart2 = alt.Chart(df_fan_desp).mark_area(opacity=0.2, color="orange").encode(y="p5", y2="p95", x="AnoMes") + \
-                 alt.Chart(df_fan_desp).mark_area(opacity=0.3, color="green").encode(y="p25", y2="p75", x="AnoMes") + \
-                 alt.Chart(df_fan_desp).mark_line(color="red").encode(y="p50", x="AnoMes") + \
-                 alt.Chart(despesas).mark_line(color="orange").encode(x="AnoMes", y="Valor")
-        st.altair_chart(chart2, use_container_width=True)
-
-        # 5️⃣ Saldo Líquido com Fan Chart
-        st.markdown("#### 5️⃣ Saldo Líquido com Fan Chart")
-        df_saldo = df_filtrado.groupby("AnoMes").apply(
-            lambda g: g[g["Tipo"]=="Receita"]["Valor"].sum() - g[g["Tipo"]=="Despesa"]["Valor"].sum()
-        ).reset_index(name="Saldo")
-        df_saldo = projecao_cenarios(df_saldo, col_val="Saldo")
-        df_fan_saldo = fan_chart(df_saldo, col_val="Saldo", noise_factor=0.3)
-        chart5 = alt.Chart(df_fan_saldo).mark_area(opacity=0.2, color="orange").encode(y="p5", y2="p95", x="AnoMes") + \
-                 alt.Chart(df_fan_saldo).mark_area(opacity=0.3, color="green").encode(y="p25", y2="p75", x="AnoMes") + \
-                 alt.Chart(df_fan_saldo).mark_line(color="red").encode(y="p50", x="AnoMes") + \
-                 alt.Chart(df_saldo).mark_line(color="blue").encode(x="AnoMes", y="Saldo")
-        st.altair_chart(chart5, use_container_width=True)
-
-        # 14️⃣ Cash Flow com Fan Chart
-        st.markdown("#### 14️⃣ Cash Flow com Fan Chart")
-        df_cf = df_filtrado.groupby("AnoMes").apply(
-            lambda g: g[g["Tipo"]=="Receita"]["Valor"].sum() - g[g["Tipo"]=="Despesa"]["Valor"].sum()
-        ).reset_index(name="CashFlow")
-        df_cf = projecao_cenarios(df_cf, col_val="CashFlow")
-        df_fan_cf = fan_chart(df_cf, col_val="CashFlow", noise_factor=0.3)
-        chart14 = alt.Chart(df_fan_cf).mark_area(opacity=0.2, color="orange").encode(y="p5", y2="p95", x="AnoMes") + \
-                  alt.Chart(df_fan_cf).mark_area(opacity=0.3, color="green").encode(y="p25", y2="p75", x="AnoMes") + \
-                  alt.Chart(df_fan_cf).mark_line(color="red").encode(y="p50", x="AnoMes") + \
-                  alt.Chart(df_cf).mark_line(color="blue").encode(x="AnoMes", y="CashFlow")
-        st.altair_chart(chart14, use_container_width=True)
-
-        # 19️⃣ Patrimônio Acumulado com Fan Chart
-        st.markdown("#### 19️⃣ Patrimônio Acumulado com Fan Chart")
-        df_acum = df_filtrado.groupby("AnoMes").apply(
-            lambda g: g[g["Tipo"]=="Receita"]["Valor"].sum() - g[g["Tipo"]=="Despesa"]["Valor"].sum()
-        ).reset_index(name="Saldo")
-        df_acum["Acumulado"] = df_acum["Saldo"].cumsum()
-        df_acum = projecao_cenarios(df_acum, col_val="Acumulado")
-        df_fan_acum = fan_chart(df_acum, col_val="Acumulado", noise_factor=0.3)
-        chart19 = alt.Chart(df_fan_acum).mark_area(opacity=0.2, color="orange").encode(y="p5", y2="p95", x="AnoMes") + \
-                  alt.Chart(df_fan_acum).mark_area(opacity=0.3, color="green").encode(y="p25", y2="p75", x="AnoMes") + \
-                  alt.Chart(df
 
 elif aba == "Monthly Audit 3":
     st.subheader("📊 Monthly Audit 3 - Auditoria Detalhada por Categoria")
@@ -2134,230 +2012,124 @@ elif aba == "Cadastro (Form)":
             st.success(f"Lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
-    st.subheader("💳 Gestão, Edição e Baixa de Lançamentos")
-    st.markdown(
-        "Acompanhe o volume diário de transações, filtre resultados, edite detalhes, "
-        "altere status, realize baixas e remova registros se necessário. 🚀"
-    )
-
+    st.subheader("Lista de Lançamentos & Smart Search (Gerenciamento)")
+    st.markdown("Utilize a ferramenta de **Smart Search** para filtrar transações instantaneamente e gerenciar cada registro (Editar ou Deletar).")
+    
+    if st.button("💾 Salvar Backup Agora"):
+        salvar_backup()
+        
     df = st.session_state.lancamentos
-
     if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-
-        # --- FILTROS RÁPIDOS NO TOPO ---
-        st.markdown("---")
-        c_f1, c_f2, c_f3 = st.columns(3)
-        with c_f1:
-            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado", "Parcial"])
-        with c_f2:
-            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa"])
-        with c_f3:
-            busca_texto = st.text_input("🔍 Buscar descrição")
-
-        # Aplicando os filtros ao DataFrame
+        col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
+        with col_s1:
+            termo_busca = st.text_input("🔍 Smart Search (Pesquisa Inteligente)", placeholder="Digite descrição, categoria ou conta...")
+        with col_s2:
+            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa", "Transferência"])
+        with col_s3:
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado"])
+            
         df_filtrado = df.copy()
-        if filtro_status != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
+        
         if filtro_tipo != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
-        if busca_texto:
-            df_filtrado = df_filtrado[df_filtrado["Descricao"].str.contains(busca_texto, case=False, na=False)]
-
-        st.markdown("---")
-
+        if filtro_status != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
+            
+        if termo_busca.strip() != "":
+            termo = termo_busca.strip().lower()
+            mask = (
+                df_filtrado["Descricao"].astype(str).str.lower().str.contains(termo, na=False) |
+                df_filtrado["Categoria"].astype(str).str.lower().str.contains(termo, na=False) |
+                df_filtrado["Conta"].astype(str).str.lower().str.contains(termo, na=False)
+            )
+            df_filtrado = df_filtrado[mask]
+            
+        st.markdown(f"Exibindo **{len(df_filtrado)}** de **{len(df)}** registros encontrados.")
+        
         if not df_filtrado.empty:
-            # Ordenar por data decrescente
-            df_filtrado = df_filtrado.sort_values(by="Data", ascending=False)
-            df_filtrado["DataStr"] = df_filtrado["Data"].dt.strftime("%d/%m/%Y")
-            dias_unicos = df_filtrado["DataStr"].unique()
-
-            hoje = pd.Timestamp.today().normalize()
-
-            for dia in dias_unicos:
-                df_dia = df_filtrado[df_filtrado["DataStr"] == dia]
-                qtd_lancamentos = len(df_dia)
-                
-                total_receitas_dia = df_dia[df_dia["Tipo"] == "Receita"]["Valor"].sum()
-                total_despesas_dia = df_dia[df_dia["Tipo"] == "Despesa"]["Valor"].sum()
-
-                # Definindo cor do dia com base nas pendências e vencimentos
-                data_dia_ts = pd.to_datetime(dia, format="%d/%m/%Y").normalize()
-                tem_vencido = any((df_dia["Status"] == "Budget") & (df_dia["Data"] < hoje))
-                tem_hoje = any((df_dia["Status"] == "Budget") & (df_dia["Data"] == hoje))
-                
-                icone_dia = "🟢"
-                if tem_vencido:
-                    icone_dia = "🔴"
-                elif tem_hoje:
-                    icone_dia = "🟡"
-
-                # Expansor para cada dia
-                with st.expander(
-                    f"{icone_dia} 📅 {dia} — 📊 {qtd_lancamentos} item(ns) | 🟢 Entradas: R$ {total_receitas_dia:,.2f} | 🔴 Saídas: R$ {total_despesas_dia:,.2f}"
-                ):
-                    for index, row in df_dia.iterrows():
-                        cols = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
-
-                        with cols[0]:
-                            st.markdown(
-                                f"**{row['Descricao']}**\n\n🏷️ *Cat:* {row['Categoria']} | 🏦 *Conta:* {row['Conta']}"
-                            )
-
-                        with cols[1]:
-                            # --- LÓGICA DE CORES INTELIGENTE ---
-                            status_atual = row.get("Status", "Budget")
-                            data_row = pd.to_datetime(row["Data"]).normalize()
+            for idx, row in df_filtrado.iterrows():
+                with st.expander(f"[{row['Tipo']}] {row['Data']} - {row['Descricao']} | R$ {row['Valor']:,.2f} ({row['Status']})"):
+                    col_det1, col_det2 = st.columns(2)
+                    with col_det1:
+                        st.write(f"**Categoria:** {row['Categoria']}")
+                        st.write(f"**Conta (Saída):** {row['Conta']}")
+                        if row["Tipo"] == "Transferência":
+                            st.write(f"**Conta Destino:** {row.get('ContaDestino', '')}")
+                    with col_det2:
+                        st.write(f"**Parcela:** {row['Parcela']}")
+                        st.write(f"**Status:** {row['Status']}")
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("🗑️ Deletar Lançamento", key=f"del_{idx}", type="secondary"):
+                            st.session_state.lancamentos = st.session_state.lancamentos.drop(idx).reset_index(drop=True)
+                            salvar_backup()
+                            st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
+                            st.success("Lançamento deletado com sucesso!")
+                            st.rerun()
+                    with col_btn2:
+                        edit_key = f"editar_toggle_{idx}"
+                        if st.button("✏️ Editar Lançamento", key=f"edit_btn_{idx}"):
+                            st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                    
+                    if st.session_state.get(f"editar_toggle_{idx}", False):
+                        with st.form(key=f"form_edit_{idx}"):
+                            st.markdown(f"### Editando Registro #{idx}")
+                            tipos_disp = ["Despesa", "Receita", "Transferência"]
+                            idx_tipo = tipos_disp.index(row["Tipo"]) if row["Tipo"] in tipos_disp else 0
+                            novo_tipo = st.selectbox("Tipo", tipos_disp, index=idx_tipo, key=f"et_{idx}")
+                            novo_status = st.selectbox("Status", ["Budget", "Efetivado"], index=0 if row["Status"] == "Budget" else 1, key=f"es_{idx}")
+                            nova_desc = st.text_input("Descrição", value=row["Descricao"], key=f"ed_{idx}")
                             
-                            if status_atual == "Efetivado":
-                                badge_cor = "🟢"
-                                texto_status = "Consolidado"
-                            elif status_atual == "Parcial":
-                                badge_cor = "🔵"
-                                texto_status = "Parcial"
-                            else:  # Budget / Pendente
-                                if data_row < hoje:
-                                    badge_cor = "🔴"
-                                    texto_status = "Vencido"
-                                elif data_row == hoje:
-                                    badge_cor = "🟡"
-                                    texto_status = "Vence Hoje"
-                                else:
-                                    badge_cor = "⏳"
-                                    texto_status = "A Vencer"
+                            idx_cat = st.session_state.categorias.index(row["Categoria"]) if row["Categoria"] in st.session_state.categorias else 0
+                            nova_cat = st.selectbox("Categoria", st.session_state.categorias, index=idx_cat, key=f"ec_{idx}")
                             
-                            st.markdown(f"**R$ {row['Valor']:,.2f}**")
-                            st.caption(f"{badge_cor} {texto_status} | {row['Tipo']}")
+                            contas_possiveis = ["Cash husband", "Nubank"]
+                            if not st.session_state.cartoes.empty:
+                                contas_possiveis.extend(st.session_state.cartoes["Nome"].tolist())
+                            idx_conta = contas_possiveis.index(row["Conta"]) if row["Conta"] in contas_possiveis else 0
+                            nova_conta = st.selectbox("Conta (Saída)", contas_possiveis, index=idx_conta, key=f"econta_{idx}")
+                            
+                            nova_conta_dest = ""
+                            if novo_tipo == "Transferência":
+                                idx_conta_dest = contas_possiveis.index(row.get("ContaDestino", "")) if row.get("ContaDestino", "") in contas_possiveis else 0
+                                nova_conta_dest = st.selectbox("Conta Destino", contas_possiveis, index=idx_conta_dest, key=f"econta_dest_{idx}")
 
-                        with cols[2]:
-                            novo_status = st.selectbox(
-                                "Status",
-                                ["Budget", "Efetivado", "Parcial"],
-                                index=(
-                                    0
-                                    if status_atual == "Budget"
-                                    else (1 if status_atual == "Efetivado" else 2)
-                                ),
-                                key=f"status_lanc_{index}",
-                            )
-                            if novo_status != status_atual:
-                                st.session_state.lancamentos.at[index, "Status"] = novo_status
+                            novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), format="%.2f", key=f"ev_{idx}")
+                            
+                            try:
+                                data_parsed = datetime.strptime(str(row["Data"]).split()[0], "%Y-%m-%d").date()
+                            except:
+                                data_parsed = datetime.today().date()
+                            nova_data = st.date_input("Data", value=data_parsed, key=f"edata_{idx}")
+                            
+                            salvar_edicao = st.form_submit_button("💾 Salvar Alterações", type="primary")
+                            if salvar_edicao:
+                                st.session_state.lancamentos.loc[idx, "Tipo"] = novo_tipo
+                                st.session_state.lancamentos.loc[idx, "Status"] = novo_status
+                                st.session_state.lancamentos.loc[idx, "Descricao"] = nova_desc
+                                st.session_state.lancamentos.loc[idx, "Categoria"] = nova_cat
+                                st.session_state.lancamentos.loc[idx, "Conta"] = nova_conta
+                                st.session_state.lancamentos.loc[idx, "ContaDestino"] = nova_conta_dest if novo_tipo == "Transferência" else ""
+                                st.session_state.lancamentos.loc[idx, "Valor"] = float(novo_valor)
+                                st.session_state.lancamentos.loc[idx, "Data"] = str(nova_data)
+                                
+                                salvar_backup()
+                                st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
+                                
+                                st.session_state[edit_key] = False
+                                st.success("Lançamento atualizado com sucesso!")
                                 st.rerun()
-
-                        with cols[3]:
-                            if st.button("💸 Pagar", key=f"btn_pg_lanc_{index}"):
-                                st.session_state[f"modal_pg_{index}"] = not st.session_state.get(
-                                    f"modal_pg_{index}", False
-                                )
-                                st.session_state[f"modal_edit_{index}"] = False
-
-                        with cols[4]:
-                            if st.button("✏️ Editar", key=f"btn_edit_lanc_{index}"):
-                                st.session_state[f"modal_edit_{index}"] = not st.session_state.get(
-                                    f"modal_edit_{index}", False
-                                )
-                                st.session_state[f"modal_pg_{index}"] = False
-
-                        with cols[5]:
-                            if st.button("🗑️", key=f"btn_del_lanc_{index}", help="Excluir lançamento"):
-                                st.session_state.lancamentos = st.session_state.lancamentos.drop(index).reset_index(drop=True)
-                                st.success("🗑️ Lançamento excluído com sucesso!")
-                                st.rerun()
-
-                        # Painel de Edição Completo do Item
-                        if st.session_state.get(f"modal_edit_{index}", False):
-                            with st.container():
-                                st.info(f"✏️ Editando Lançamento: **{row['Descricao']}**")
-                                with st.form(key=f"form_edit_{index}"):
-                                    col_ed1, col_ed2 = st.columns(2)
-                                    with col_ed1:
-                                        nova_data = st.date_input("Data", value=pd.to_datetime(row["Data"]))
-                                        nova_desc = st.text_input("Descrição", value=row["Descricao"])
-                                        novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), min_value=0.0)
-                                    with col_ed2:
-                                        tipo_atual = row.get("Tipo", "Despesa")
-                                        idx_tipo = 0 if tipo_atual == "Receita" else 1
-                                        novo_tipo = st.selectbox("Tipo", ["Receita", "Despesa"], index=idx_tipo)
-                                        
-                                        nova_cat = st.text_input("Categoria", value=row["Categoria"])
-                                        nova_conta = st.text_input("Conta", value=row.get("Conta", ""))
-                                    
-                                    col_e1, col_e2 = st.columns(2)
-                                    with col_e1:
-                                        salvar_edicao = st.form_submit_button("💾 Salvar Alterações")
-                                    with col_e2:
-                                        cancelar_edicao = st.form_submit_button("❌ Cancelar")
-
-                                    if salvar_edicao:
-                                        st.session_state.lancamentos.at[index, "Data"] = pd.to_datetime(nova_data)
-                                        st.session_state.lancamentos.at[index, "Descricao"] = nova_desc
-                                        st.session_state.lancamentos.at[index, "Valor"] = novo_valor
-                                        st.session_state.lancamentos.at[index, "Tipo"] = novo_tipo
-                                        st.session_state.lancamentos.at[index, "Categoria"] = nova_cat
-                                        st.session_state.lancamentos.at[index, "Conta"] = nova_conta
-                                        
-                                        st.session_state[f"modal_edit_{index}"] = False
-                                        st.success("✨ Lançamento atualizado com sucesso!")
-                                        st.rerun()
-                                    
-                                    if cancelar_edicao:
-                                        st.session_state[f"modal_edit_{index}"] = False
-                                        st.rerun()
-
-                        # Painel de Baixa Parcial / Total por item
-                        if st.session_state.get(f"modal_pg_{index}", False):
-                            with st.container():
-                                st.warning(
-                                    f"💸 Painel de Baixa para: **{row['Descricao']}** (Saldo Atual:"
-                                    f" R$ {row['Valor']:,.2f})"
-                                )
-                                col_p1, col_p2, col_p3 = st.columns(3)
-
-                                with col_p1:
-                                    valor_pago_agora = st.number_input(
-                                        "Valor a Pagar Agora (R$)",
-                                        min_value=0.0,
-                                        max_value=float(row["Valor"]),
-                                        value=float(row["Valor"]),
-                                        key=f"val_parcial_lanc_{index}",
-                                    )
-
-                                with col_p2:
-                                    forma_pgto = st.selectbox(
-                                        "Forma de Pagamento",
-                                        ["PIX", "Dinheiro", "Débito", "Transferência", "Crédito"],
-                                        key=f"forma_parcial_lanc_{index}",
-                                    )
-
-                                with col_p3:
-                                    st.markdown("<br>", unsafe_allow_html=True)
-                                    if st.button(
-                                        "✅ Confirmar Baixa", key=f"conf_parcial_lanc_{index}"
-                                    ):
-                                        if valor_pago_agora < row["Valor"]:
-                                            st.session_state.lancamentos.at[index, "Valor"] = (
-                                                row["Valor"] - valor_pago_agora
-                                            )
-                                            st.session_state.lancamentos.at[index, "Status"] = "Parcial"
-                                            st.success(
-                                                f"⚡ Baixa parcial de R$ {valor_pago_agora:,.2f} efetuada!"
-                                                f" Restam R$ {row['Valor'] - valor_pago_agora:,.2f}."
-                                            )
-                                        else:
-                                            st.session_state.lancamentos.at[index, "Status"] = (
-                                                "Efetivado"
-                                            )
-                                            st.success("🎉 Lançamento totalmente quitado!")
-
-                                        st.session_state[f"modal_pg_{index}"] = False
-                                        st.rerun()
-
-                        st.markdown("---")
         else:
-            st.warning("🔍 Nenhum lançamento encontrado com os filtros selecionados.")
+            st.warning("Nenhum lançamento corresponde ao filtro ou Smart Search informado.")
+            
+        st.markdown("---")
+        if st.button("🗑️ Limpar Todos os Lançamentos"):
+            st.session_state.lancamentos = pd.DataFrame(columns=["Tipo", "Status", "Descricao", "Categoria", "Conta", "ContaDestino", "Valor", "Data", "Parcela"])
+            salvar_backup()
+            st.rerun()
     else:
-        st.info("📂 Nenhum lançamento cadastrado para gerenciar no momento.")
+        st.write("Nenhum registro encontrado.")
 
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
