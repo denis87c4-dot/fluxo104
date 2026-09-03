@@ -2012,121 +2012,188 @@ elif aba == "Cadastro (Form)":
             st.success(f"Lançamento(s) gerado(s) com sucesso!")
 
 elif aba == "Lançamentos":
-  st.subheader("💳 Gestão e Baixa de Lançamentos por Dia")
-  st.markdown(
-      "Acompanhe o volume diário de transações, altere status e realize baixas"
-      " parciais ou totais."
-  )
+    st.subheader("💳 Gestão, Edição e Baixa de Lançamentos")
+    st.markdown(
+        "Acompanhe o volume diário de transações, filtre resultados, edite detalhes, "
+        "altere status, realize baixas e remova registros se necessário. 🚀"
+    )
 
-  df = st.session_state.lancamentos
+    df = st.session_state.lancamentos
 
-  if not df.empty:
-    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
 
-    # Ordenar por data decrescente
-    df = df.sort_values(by="Data", ascending=False)
-    df["DataStr"] = df["Data"].dt.strftime("%d/%m/%Y")
-    dias_unicos = df["DataStr"].unique()
+        # --- IDÉIA 1: FILTROS RÁPIDOS NO TOPO ---
+        st.markdown("---")
+        c_f1, c_f2, c_f3 = st.columns(3)
+        with c_f1:
+            filtro_status = st.selectbox("Filtrar por Status", ["Todos", "Budget", "Efetivado", "Parcial"])
+        with c_f2:
+            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Receita", "Despesa"])
+        with c_f3:
+            busca_texto = st.text_input("🔍 Buscar descrição")
 
-    for dia in dias_unicos:
-      df_dia = df[df["DataStr"] == dia]
-      qtd_lancamentos = len(df_dia)
-      total_dia = df_dia["Valor"].sum()
+        # Aplicando os filtros ao DataFrame
+        df_filtrado = df.copy()
+        if filtro_status != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == filtro_status]
+        if filtro_tipo != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
+        if busca_texto:
+            df_filtrado = df_filtrado[df_filtrado["Descricao"].str.contains(busca_texto, case=False, na=False)]
 
-      # Expansor para cada dia mostrando o resumo e a quantidade de lançamentos
-      with st.expander(
-          f"📅 {dia} — {qtd_lancamentos} lançamento(s) | Total: R$"
-          f" {total_dia:,.2f}"
-      ):
-        for index, row in df_dia.iterrows():
-          cols = st.columns([3, 2, 2, 2])
+        st.markdown("---")
 
-          with cols[0]:
-            st.markdown(
-                f"**{row['Descricao']}**\n\n*Cat:* {row['Categoria']} | *Conta:* "
-                f"{row['Conta']}"
-            )
+        if not df_filtrado.empty:
+            # Ordenar por data decrescente
+            df_filtrado = df_filtrado.sort_values(by="Data", ascending=False)
+            df_filtrado["DataStr"] = df_filtrado["Data"].dt.strftime("%d/%m/%Y")
+            dias_unicos = df_filtrado["DataStr"].unique()
 
-          with cols[1]:
-            st.markdown(f"**R$ {row['Valor']:,.2f}**")
-            st.caption(f"Tipo: {row['Tipo']}")
+            for dia in dias_unicos:
+                df_dia = df_filtrado[df_filtrado["DataStr"] == dia]
+                qtd_lancamentos = len(df_dia)
+                
+                # --- IDÉIA 4: MINI KPIS DIÁRIOS (Entradas vs Saídas) ---
+                total_receitas_dia = df_dia[df_dia["Tipo"] == "Receita"]["Valor"].sum()
+                total_despesas_dia = df_dia[df_dia["Tipo"] == "Despesa"]["Valor"].sum()
 
-          with cols[2]:
-            status_atual = row.get("Status", "Budget")
-            novo_status = st.selectbox(
-                "Status",
-                ["Budget", "Efetivado", "Parcial"],
-                index=(
-                    0
-                    if status_atual == "Budget"
-                    else (1 if status_atual == "Efetivado" else 2)
-                ),
-                key=f"status_lanc_{index}",
-            )
-            if novo_status != status_atual:
-              st.session_state.lancamentos.at[index, "Status"] = novo_status
-              st.rerun()
-
-          with cols[3]:
-            if st.button("💸 Pagar / Baixar", key=f"btn_pg_lanc_{index}"):
-              st.session_state[f"modal_pg_{index}"] = not st.session_state.get(
-                  f"modal_pg_{index}", False
-              )
-
-          # Painel de Baixa Parcial / Total por item
-          if st.session_state.get(f"modal_pg_{index}", False):
-            with st.container():
-              st.info(
-                  f"Painel de Baixa para: **{row['Descricao']}** (Saldo Atual:"
-                  f" R$ {row['Valor']:,.2f})"
-              )
-              col_p1, col_p2, col_p3 = st.columns(3)
-
-              with col_p1:
-                valor_pago_agora = st.number_input(
-                    "Valor a Pagar Agora (R$)",
-                    min_value=0.0,
-                    max_value=float(row["Valor"]),
-                    value=float(row["Valor"]),
-                    key=f"val_parcial_lanc_{index}",
-                )
-
-              with col_p2:
-                forma_pgto = st.selectbox(
-                    "Forma de Pagamento",
-                    ["PIX", "Dinheiro", "Débito", "Transferência", "Crédito"],
-                    key=f"forma_parcial_lanc_{index}",
-                )
-
-              with col_p3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button(
-                    "Confirmar Baixa", key=f"conf_parcial_lanc_{index}"
+                # Expansor para cada dia mostrando o resumo financeiro detalhado
+                with st.expander(
+                    f"📅 {dia} — 📊 {qtd_lancamentos} item(ns) | 🟢 Entradas: R$ {total_receitas_dia:,.2f} | 🔴 Saídas: R$ {total_despesas_dia:,.2f}"
                 ):
-                  if valor_pago_agora < row["Valor"]:
-                    # Pagamento Parcial: atualiza o saldo restante do item
-                    st.session_state.lancamentos.at[index, "Valor"] = (
-                        row["Valor"] - valor_pago_agora
-                    )
-                    st.session_state.lancamentos.at[index, "Status"] = "Parcial"
-                    st.success(
-                        f"Baixa parcial de R$ {valor_pago_agora:,.2f} efetuada!"
-                        f" Restam R$ {row['Valor'] - valor_pago_agora:,.2f}."
-                    )
-                  else:
-                    # Pagamento Total
-                    st.session_state.lancamentos.at[index, "Status"] = (
-                        "Efetivado"
-                    )
-                    st.success("Lançamento totalmente quitado!")
+                    for index, row in df_dia.iterrows():
+                        cols = st.columns([2.5, 1.5, 1.5, 1.5, 1.5, 1])
 
-                  st.session_state[f"modal_pg_{index}"] = False
-                  st.rerun()
+                        with cols[0]:
+                            st.markdown(
+                                f"**{row['Descricao']}**\n\n🏷️ *Cat:* {row['Categoria']} | 🏦 *Conta:* {row['Conta']}"
+                            )
 
-          st.markdown("---")
-  else:
-    st.info("Nenhum lançamento cadastrado para gerenciar.")
+                        with cols[1]:
+                            # --- IDÉIA 2: BADGES COLORIDOS DE STATUS ---
+                            status_atual = row.get("Status", "Budget")
+                            badge_cor = "🟢" if status_atual == "Efetivado" else ("🟡" if status_atual == "Budget" else "🔵")
+                            
+                            st.markdown(f"**R$ {row['Valor']:,.2f}**")
+                            st.caption(f"{badge_cor} {status_atual} | {row['Tipo']}")
+
+                        with cols[2]:
+                            novo_status = st.selectbox(
+                                "Status",
+                                ["Budget", "Efetivado", "Parcial"],
+                                index=(
+                                    0
+                                    if status_atual == "Budget"
+                                    else (1 if status_atual == "Efetivado" else 2)
+                                ),
+                                key=f"status_lanc_{index}",
+                            )
+                            if novo_status != status_atual:
+                                st.session_state.lancamentos.at[index, "Status"] = novo_status
+                                st.rerun()
+
+                        with cols[3]:
+                            if st.button("💸 Pagar", key=f"btn_pg_lanc_{index}"):
+                                st.session_state[f"modal_pg_{index}"] = not st.session_state.get(
+                                    f"modal_pg_{index}", False
+                                )
+                                st.session_state[f"modal_edit_{index}"] = False
+
+                        with cols[4]:
+                            if st.button("✏️ Editar", key=f"btn_edit_lanc_{index}"):
+                                st.session_state[f"modal_edit_{index}"] = not st.session_state.get(
+                                    f"modal_edit_{index}", False
+                                )
+                                st.session_state[f"modal_pg_{index}"] = False
+
+                        with cols[5]:
+                            if st.button("🗑️", key=f"btn_del_lanc_{index}", help="Excluir lançamento"):
+                                st.session_state.lancamentos = st.session_state.lancamentos.drop(index).reset_index(drop=True)
+                                st.success("🗑️ Lançamento excluído com sucesso!")
+                                st.rerun()
+
+                        # Painel de Edição do Item
+                        if st.session_state.get(f"modal_edit_{index}", False):
+                            with st.container():
+                                st.info(f"✏️ Editando Lançamento: **{row['Descricao']}**")
+                                with st.form(key=f"form_edit_{index}"):
+                                    nova_desc = st.text_input("Descrição", value=row["Descricao"])
+                                    novo_valor = st.number_input("Valor (R$)", value=float(row["Valor"]), min_value=0.0)
+                                    nova_cat = st.text_input("Categoria", value=row["Categoria"])
+                                    
+                                    col_e1, col_e2 = st.columns(2)
+                                    with col_e1:
+                                        salvar_edicao = st.form_submit_button("💾 Salvar Alterações")
+                                    with col_e2:
+                                        cancelar_edicao = st.form_submit_button("❌ Cancelar")
+
+                                    if salvar_edicao:
+                                        st.session_state.lancamentos.at[index, "Descricao"] = nova_desc
+                                        st.session_state.lancamentos.at[index, "Valor"] = novo_valor
+                                        st.session_state.lancamentos.at[index, "Categoria"] = nova_cat
+                                        st.session_state[f"modal_edit_{index}"] = False
+                                        st.success("✨ Lançamento atualizado com sucesso!")
+                                        st.rerun()
+                                    
+                                    if cancelar_edicao:
+                                        st.session_state[f"modal_edit_{index}"] = False
+                                        st.rerun()
+
+                        # Painel de Baixa Parcial / Total por item
+                        if st.session_state.get(f"modal_pg_{index}", False):
+                            with st.container():
+                                st.warning(
+                                    f"💸 Painel de Baixa para: **{row['Descricao']}** (Saldo Atual:"
+                                    f" R$ {row['Valor']:,.2f})"
+                                )
+                                col_p1, col_p2, col_p3 = st.columns(3)
+
+                                with col_p1:
+                                    valor_pago_agora = st.number_input(
+                                        "Valor a Pagar Agora (R$)",
+                                        min_value=0.0,
+                                        max_value=float(row["Valor"]),
+                                        value=float(row["Valor"]),
+                                        key=f"val_parcial_lanc_{index}",
+                                    )
+
+                                with col_p2:
+                                    forma_pgto = st.selectbox(
+                                        "Forma de Pagamento",
+                                        ["PIX", "Dinheiro", "Débito", "Transferência", "Crédito"],
+                                        key=f"forma_parcial_lanc_{index}",
+                                    )
+
+                                with col_p3:
+                                    st.markdown("<br>", unsafe_allow_html=True)
+                                    if st.button(
+                                        "✅ Confirmar Baixa", key=f"conf_parcial_lanc_{index}"
+                                    ):
+                                        if valor_pago_agora < row["Valor"]:
+                                            st.session_state.lancamentos.at[index, "Valor"] = (
+                                                row["Valor"] - valor_pago_agora
+                                            )
+                                            st.session_state.lancamentos.at[index, "Status"] = "Parcial"
+                                            st.success(
+                                                f"⚡ Baixa parcial de R$ {valor_pago_agora:,.2f} efetuada!"
+                                                f" Restam R$ {row['Valor'] - valor_pago_agora:,.2f}."
+                                            )
+                                        else:
+                                            st.session_state.lancamentos.at[index, "Status"] = (
+                                                "Efetivado"
+                                            )
+                                            st.success("🎉 Lançamento totalmente quitado!")
+
+                                        st.session_state[f"modal_pg_{index}"] = False
+                                        st.rerun()
+
+                        st.markdown("---")
+        else:
+            st.warning("🔍 Nenhum lançamento encontrado com os filtros selecionados.")
+    else:
+        st.info("📂 Nenhum lançamento cadastrado para gerenciar no momento.")
 
 elif aba == "Cartões":
     st.subheader("💳 Cadastro de Cartões e Contas")
