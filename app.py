@@ -81,7 +81,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit",
-    "Financial Indicators", "Statistical Indicators", "Cadastro (Form)",
+    "Financial Indicators", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
@@ -1029,100 +1029,6 @@ elif aba == "Monthly Audit 3":
 
 elif aba == "Monthly Audit":
     st.subheader("📒 Monthly Audit - Auditoria Completa")
-    elif aba == "Monthly Audit":
-    st.subheader("📋 Monthly Audit - Auditoria Financeira Dinâmica")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        # Tratamento inicial
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        # ==================== FILTROS ====================
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="audit_status")
-        with col_f2:
-            data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date(), key="audit_ini")
-        with col_f3:
-            data_fim = st.date_input("📅 Data Final", df["Data"].max().date(), key="audit_fim")
-
-        df_filtrado = df[(df["Data"].dt.date >= data_ini) & (df["Data"].dt.date <= data_fim)]
-        if status_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
-
-        # ==================== TABELA CRUZADA ====================
-        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-
-        df_filtrado["Fixas"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and "fixa" in r["Categoria"].lower() else 0.0, axis=1)
-        df_filtrado["Variaveis"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and "variavel" in r["Categoria"].lower() else 0.0, axis=1)
-        df_filtrado["Cartoes"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
-        df_filtrado["Debts"] = df_filtrado.apply(lambda r: r["Valor"] if "debt" in r["Categoria"].lower() else 0.0, axis=1)
-        df_filtrado["Receitas"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Receita" else 0.0, axis=1)
-
-        pivot_audit = df_filtrado.pivot_table(
-            index="AnoMes",
-            values=["Receitas","Fixas","Variaveis","Cartoes","Debts"],
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index().sort_values("AnoMes")
-
-        pivot_audit["% Renda Comprometida"] = ((pivot_audit["Fixas"]+pivot_audit["Variaveis"]+pivot_audit["Cartoes"]+pivot_audit["Debts"]) / pivot_audit["Receitas"] * 100).round(1)
-
-        # ==================== EXIBIÇÃO ====================
-        pivot_fmt = pivot_audit.copy()
-        for col in ["Receitas","Fixas","Variaveis","Cartoes","Debts"]:
-            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
-        pivot_fmt["% Renda Comprometida"] = pivot_fmt["% Renda Comprometida"].apply(lambda x: f"{x:.1f}%")
-
-        st.dataframe(aplicar_estilo_tabela(pivot_fmt.set_index("AnoMes").style, subset=["% Renda Comprometida"]), use_container_width=True)
-
-        # Exportação da tabela principal
-        csv_audit = pivot_audit.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Baixar Tabela Audit (CSV)",
-            data=csv_audit,
-            file_name=f"audit_tabela_{datetime.today().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv"
-        )
-
-        st.markdown("### 📈 Evolução de Dívidas e Despesas")
-        chart_audit = alt.Chart(pivot_audit.melt(id_vars="AnoMes", value_vars=["Fixas","Variaveis","Cartoes","Debts"], var_name="Tipo", value_name="Valor")).mark_line(point=True).encode(
-            x="AnoMes:N", y="Valor:Q", color="Tipo:N", tooltip=["AnoMes","Tipo","Valor"]
-        ).properties(height=380).interactive()
-        st.altair_chart(chart_audit, use_container_width=True)
-
-        # ==================== CURVA ABC ====================
-        st.markdown("### 📉 Curva ABC de Dívidas e Despesas")
-        df_abc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") | (df_filtrado["Debts"] > 0)].groupby("Categoria")["Valor"].sum().reset_index()
-        if not df_abc.empty:
-            df_abc = df_abc.sort_values(by="Valor", ascending=False)
-            df_abc["Acumulado_%"] = (df_abc["Valor"].cumsum() / df_abc["Valor"].sum()) * 100
-
-            base_abc = alt.Chart(df_abc).encode(x=alt.X("Categoria:N", sort="-y", title="Categoria"))
-            bar_abc = base_abc.mark_bar(color="#264653").encode(
-                y=alt.Y("Valor:Q", title="Gasto Total (R$)"),
-                tooltip=["Categoria", "Valor"]
-            )
-            line_abc = base_abc.mark_line(strokeWidth=3, color="#e76f51", point=True).encode(
-                y=alt.Y("Acumulado_%:Q", title="Acumulado (%)", scale=alt.Scale(domain=[0, 105]))
-            )
-            chart_abc = alt.layer(bar_abc, line_abc).resolve_scale(y="independent").properties(height=380).interactive()
-            st.altair_chart(chart_abc, use_container_width=True)
-
-            # Exportação rápida da Curva ABC
-            csv_abc = df_abc.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Curva ABC (CSV)",
-                data=csv_abc,
-                file_name=f"audit_curva_abc_{datetime.today().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("Não há despesas ou dívidas suficientes no filtro selecionado para compor a Curva ABC.")
-    else:
-        st.info("Nenhum lançamento disponível para auditoria.")
     st.markdown("Painel robusto com **Budget vs Efetivado**, auditoria por **Conta** e **Categoria**, múltiplos filtros, indicadores percentuais, mapa visual e gráficos de linha.")
 
     df = st.session_state.lancamentos
@@ -1500,6 +1406,125 @@ elif aba == "Statistical Indicators":
         st.altair_chart(chart_burn, use_container_width=True)
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
+
+elif aba == "Statistical 3":
+    st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
+    st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filtros
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="stat3_status")
+        with col_f2:
+            periodo_sel = st.selectbox("📅 Horizonte", ["Mensal", "Último mês", "Próximos 3 meses", "Próximos 6 meses", "Últimos 3 meses", "Últimos 6 meses", "Últimos 12 meses"], key="stat3_periodo")
+
+        # Definir horizonte
+        ultimo_mes = df["Data"].max()
+        if periodo_sel == "Mensal":
+            mes_sel = st.selectbox("Selecione o mês", sorted(df["AnoMes"].unique(), reverse=True))
+            ano, mes = map(int, mes_sel.split("-"))
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Último mês":
+            ano, mes = ultimo_mes.year, ultimo_mes.month
+            df_filtrado = df[(df["Data"].dt.year == ano) & (df["Data"].dt.month == mes)]
+        elif periodo_sel == "Próximos 3 meses":
+            fim = ultimo_mes + relativedelta(months=3)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        elif periodo_sel == "Próximos 6 meses":
+            fim = ultimo_mes + relativedelta(months=6)
+            df_filtrado = df[(df["Data"] > ultimo_mes) & (df["Data"] <= fim)]
+        else:
+            meses_map = {"Últimos 3 meses": 3, "Últimos 6 meses": 6, "Últimos 12 meses": 12}
+            horizonte = meses_map[periodo_sel]
+            inicio_periodo = ultimo_mes - pd.DateOffset(months=horizonte)
+            df_filtrado = df[df["Data"] >= inicio_periodo]
+
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        # KPIs
+        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
+        saidas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].sum()
+        saldo_liquido = entradas - saidas
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("🟢 Entradas", f"R$ {entradas:,.2f}")
+        col2.metric("🔴 Saídas", f"R$ {saidas:,.2f}", delta_color="inverse")
+        col3.metric("💰 Saldo Líquido", f"R$ {saldo_liquido:,.2f}")
+
+        st.markdown("---")
+        st.markdown("### 📈 Tendência Histórica com Projeção")
+
+        pivot = df_filtrado.pivot_table(index="AnoMes", values="Valor", columns="Tipo", aggfunc="sum", fill_value=0).reset_index()
+        pivot["CashFlow"] = pivot.get("Receita", 0) - pivot.get("Despesa", 0)
+
+        # Projeção linear para próximos meses
+        x_vals = np.arange(len(pivot))
+        y_vals = pivot["CashFlow"].values
+        if len(y_vals) > 1:
+            a, b = np.polyfit(x_vals, y_vals, 1)
+            futuros = 6
+            proj_x = np.arange(len(pivot), len(pivot) + futuros)
+            proj_y = a * proj_x + b
+            proj_periodos = [(ultimo_mes + relativedelta(months=i)).strftime("%Y-%m") for i in range(1, futuros+1)]
+            df_proj = pd.DataFrame({"AnoMes": proj_periodos, "CashFlow": proj_y, "Tipo": "Projeção"})
+        else:
+            df_proj = pd.DataFrame()
+
+        df_hist = pivot[["AnoMes", "CashFlow"]].copy()
+        df_hist["Tipo"] = "Histórico"
+        df_final = pd.concat([df_hist, df_proj])
+
+        chart_trend = alt.Chart(df_final).mark_line(point=True, strokeWidth=3).encode(
+            x=alt.X("AnoMes:N", title="Período"),
+            y=alt.Y("CashFlow:Q", title="Fluxo de Caixa (R$)"),
+            color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Histórico", "Projeção"], range=["#2a9d8f", "#e63946"])),
+            tooltip=["AnoMes", "CashFlow", "Tipo"]
+        ).properties(height=350).interactive()
+        st.altair_chart(chart_trend, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📊 Volatilidade das Despesas (Scatter Plot)")
+        df_vol = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
+        if not df_vol.empty:
+            chart_vol = alt.Chart(df_vol).mark_circle(size=100, color="#e63946").encode(
+                x=alt.X("AnoMes:N", title="Período"),
+                y=alt.Y("Valor:Q", title="Total de Despesas (R$)"),
+                tooltip=["AnoMes", "Valor"]
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_vol, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📐 Métricas Estatísticas")
+        despesas_vals = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].values
+        if len(despesas_vals) > 0:
+            media = np.mean(despesas_vals)
+            mediana = np.median(despesas_vals)
+            desvio_padrao = np.std(despesas_vals, ddof=1)
+            variancia = np.var(despesas_vals, ddof=1)
+            coef_var = (desvio_padrao / media * 100) if media != 0 else 0
+
+            col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
+            col_s1.metric("📊 Média", f"R$ {media:,.2f}")
+            col_s2.metric("📊 Mediana", f"R$ {mediana:,.2f}")
+            col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
+            col_s4.metric("📊 Variância", f"R$ {variancia:,.2f}")
+            col_s5.metric("📊 Coef. Variação", f"{coef_var:.1f}%")
+
+        st.markdown("---")
+        st.markdown("### ✅ Insights Executivos")
+        if not df_proj.empty:
+            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. A tendência indica que nos próximos 3 meses o caixa pode chegar a aproximadamente R$ {df_proj['CashFlow'].head(3).sum():,.2f}, e em 6 meses R$ {df_proj['CashFlow'].sum():,.2f}.")
+        else:
+            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}, mas não há dados suficientes para projeções futuras.")
+    else:
+        st.info("Nenhum lançamento disponível para análise estatística.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
