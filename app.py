@@ -124,133 +124,127 @@ if arquivo_upload is not None:
         st.sidebar.error(f"Erro ao restaurar arquivo: {e}")
 
 # ==================== BLOCOS DAS ABAS ====================
-elif aba == "Dashboard":
-    st.subheader("📊 Dashboard - Painel Completo Unificado")
+
+   elif aba == "Dashboard":
+    st.subheader("📊 Dashboard Executivo Completo")
 
     df = st.session_state.lancamentos
     if not df.empty:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
 
-        # ==================== FILTROS ====================
-        with st.expander("🔍 Filtros Avançados", expanded=True):
-            col1, col2, col3, col4 = st.columns(4)
-            status_sel = col1.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
-            tipo_sel = col2.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist())
-            categoria_sel = col3.multiselect("🏷️ Categoria", df["Categoria"].unique().tolist(), default=df["Categoria"].unique().tolist())
-            conta_sel = col4.multiselect("🏦 Conta", df["Conta"].unique().tolist(), default=df["Conta"].unique().tolist())
+        # --- Filtros globais ---
+        st.markdown("### 🔍 Filtros Globais")
+        col1, col2 = st.columns(2)
+        with col1:
+            data_inicio = st.date_input("📅 Data Inicial", df["Data"].min().date())
+            data_fim = st.date_input("📅 Data Final", df["Data"].max().date())
+        with col2:
+            status_opcoes = ["Todos"] + sorted(df["Status"].dropna().unique().tolist())
+            status_sel = st.selectbox("📌 Status", status_opcoes)
 
-            col5, col6, col7, col8 = st.columns(4)
-            data_inicio = col5.date_input("📅 Data Inicial", df["Data"].min().date())
-            data_fim = col6.date_input("📅 Data Final", df["Data"].max().date())
-            valor_min = col7.number_input("💵 Valor Mínimo", min_value=0.0, value=0.0, step=100.0)
-            valor_max = col8.number_input("💵 Valor Máximo", min_value=0.0, value=float(df["Valor"].max()), step=100.0)
-
-        df_filtrado = df[
-            (df["Data"].dt.date >= data_inicio) &
-            (df["Data"].dt.date <= data_fim) &
-            (df["Tipo"].isin(tipo_sel)) &
-            (df["Categoria"].isin(categoria_sel)) &
-            (df["Conta"].isin(conta_sel)) &
-            (df["Valor"] >= valor_min) &
-            (df["Valor"] <= valor_max)
-        ]
+        df_filtrado = df[(df["Data"].dt.date >= data_inicio) & (df["Data"].dt.date <= data_fim)]
         if status_sel != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
-        # ==================== KPIs PRINCIPAIS ====================
-        entradas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
-        saidas_cc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (~df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        passivo_cartao = df_filtrado[(df_filtrado["Tipo"] == "Despesa") & (df_filtrado["Conta"].isin(cartoes_nomes))]["Valor"].sum()
-        transferencias = df_filtrado[df_filtrado["Tipo"] == "Transferência"]["Valor"].sum()
-        saldo_liquido = entradas - (saidas_cc + passivo_cartao)
+        # --- KPIs executivos ---
+        entradas = df_filtrado[df_filtrado["Tipo"]=="Receita"]["Valor"].sum()
+        despesas = df_filtrado[df_filtrado["Tipo"]=="Despesa"]["Valor"].sum()
+        cash_flow = entradas - despesas
+        net_savings_rate = (cash_flow/entradas*100) if entradas>0 else 0
+        comprometimento_renda = (despesas/entradas*100) if entradas>0 else 0
+        cash_ratio_val = (entradas/despesas) if despesas>0 else 0
+        burn_rate_val = abs(cash_flow) if cash_flow<0 else 0
 
-        cols = st.columns(5)
-        kpis_principais = {
-            "🟢 Entradas": f"R$ {entradas:,.2f}",
-            "🔴 Saídas (C/C)": f"R$ {saidas_cc:,.2f}",
-            "💳 Passivo Cartão": f"R$ {passivo_cartao:,.2f}",
-            "🔵 Transferências": f"R$ {transferencias:,.2f}",
-            "💰 Saldo Líquido": f"R$ {saldo_liquido:,.2f}"
-        }
-        for i, (nome, valor) in enumerate(kpis_principais.items()):
-            with cols[i]:
-                st.metric(nome, valor)
-
-        st.markdown("---")
-
-        # ==================== KPIs EXECUTIVOS ====================
-        net_savings_rate = (saldo_liquido / entradas * 100) if entradas > 0 else 0.0
-        comprometimento_renda = (saidas_cc / entradas * 100) if entradas > 0 else 0.0
-        cash_ratio_val = (entradas / saidas_cc) if saidas_cc > 0 else 0.0
-        burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
-
+        st.markdown("### 📌 KPIs Executivos")
         cols = st.columns(4)
         cols[0].metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
         cols[1].metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
         cols[2].metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x")
         cols[3].metric("🔥 Burn Rate", f"R$ {burn_rate_val:,.2f}", delta_color="inverse")
 
-        st.markdown("---")
-
-        # ==================== KPIs PESSOAIS EM CARDS ====================
-        st.markdown("### 📌 Indicadores Pessoais (Cards Compactos)")
-        dias_periodo = max(1, (data_fim - data_inicio).days + 1)
-        total_despesas = saidas_cc + passivo_cartao
-
-        kpis_pessoais = {
-            "Renda Diária": f"R$ {entradas/dias_periodo:,.2f}/dia",
-            "Gasto Diário": f"R$ {total_despesas/dias_periodo:,.2f}/dia",
-            "Autonomia Caixa": f"{(saldo_liquido/(total_despesas/dias_periodo) if total_despesas>0 else 0):.0f} dias",
-            "Ticket Médio Receita": f"R$ {df_filtrado[df_filtrado['Tipo']=='Receita']['Valor'].mean():,.2f}",
-            "Ticket Médio Despesa": f"R$ {df_filtrado[df_filtrado['Tipo']=='Despesa']['Valor'].mean():,.2f}",
-            "Maior Gasto Único": f"R$ {df_filtrado[df_filtrado['Tipo']=='Despesa']['Valor'].max():,.2f}",
-            "Dependência Cartão": f"{(passivo_cartao/total_despesas*100 if total_despesas>0 else 0):.1f}%",
-            "Concentração Categoria": f"{(df_filtrado[df_filtrado['Tipo']=='Despesa'].groupby('Categoria')['Valor'].sum().max()/total_despesas*100 if total_despesas>0 else 0):.1f}%",
-            "Impacto Outlier": f"{(df_filtrado[df_filtrado['Tipo']=='Despesa']['Valor'].max()/total_despesas*100 if total_despesas>0 else 0):.1f}%",
-            "Volume Lançamentos": f"{len(df_filtrado)} un.",
-            "Média Lanç./Dia": f"{len(df_filtrado)/dias_periodo:.2f}",
-        }
-
-        cols = st.columns(3)
-        i = 0
-        for nome, valor in kpis_pessoais.items():
-            with cols[i]:
-                st.metric(nome, valor)
-            i = (i+1) % 3
-            if i == 0:
-                cols = st.columns(3)
+        # --- Alertas visuais ---
+        if comprometimento_renda > 50:
+            st.error("⚠️ Comprometimento da renda acima de 50%!")
+        if not st.session_state.cartoes.empty:
+            df_cartoes = st.session_state.cartoes.copy()
+            df_cartoes["Limite"] = pd.to_numeric(df_cartoes["Limite"], errors="coerce").fillna(0.0)
+            df_despesas_cartao = df_filtrado[df_filtrado["Conta"].isin(df_cartoes["Nome"].tolist())]
+            gastos_por_cartao = df_despesas_cartao.groupby("Conta")["Valor"].sum().reset_index(name="ValorConsumido")
+            for _, row in gastos_por_cartao.iterrows():
+                limite = df_cartoes[df_cartoes["Nome"]==row["Conta"]]["Limite"].values[0]
+                if limite>0 and row["ValorConsumido"]/limite > 0.8:
+                    st.warning(f"💳 Cartão {row['Conta']} já consumiu mais de 80% do limite!")
 
         st.markdown("---")
 
-        # ==================== GRÁFICOS COMPARATIVOS ====================
-        st.markdown("### 📈 Gráficos Comparativos")
-        pivot_hist = df_filtrado.pivot_table(
-            index="AnoMes",
-            values=["Valor"],
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
+        # --- Tabela detalhada ---
+        st.markdown("### 📋 Transações Detalhadas")
+        df_exibicao = df_filtrado.copy()
+        df_exibicao["Valor"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}")
+        df_exibicao["Data"] = df_exibicao["Data"].dt.strftime("%d/%m/%Y")
+        st.dataframe(df_exibicao, use_container_width=True)
 
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            st.markdown("#### Income vs Expense vs Cartão")
-            # aqui você pode adaptar para melt e plotar como no Dashboard 1
-        with col_g2:
-            st.markdown("#### Cash Flow vs Acumulado")
-            # idem, gráfico consolidado
+        # --- Tracking Mensal ---
+        st.markdown("### 📊 Tracking Mensal")
+        df_filtrado["Receita"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Receita" else 0.0, axis=1)
+        df_filtrado["Despesa"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" else 0.0, axis=1)
+        df_summary = df_filtrado.groupby("AnoMes")[["Receita","Despesa"]].sum().reset_index()
+        df_summary["Cash Flow"] = df_summary["Receita"] - df_summary["Despesa"]
+        df_summary["Cumulative"] = df_summary["Cash Flow"].cumsum()
+        df_summary["% Expense/Income"] = (df_summary["Despesa"]/df_summary["Receita"]*100).round(1).astype(str) + "%"
+        st.dataframe(df_summary, use_container_width=True)
 
-        st.markdown("---")
+        # --- Tracking por Categoria ---
+        st.markdown("### 📂 Tracking por Categoria")
+        df_cat = df_filtrado.groupby(["Categoria","AnoMes"])["Valor"].sum().reset_index()
+        df_cat_pivot = df_cat.pivot_table(index="AnoMes", columns="Categoria", values="Valor", fill_value=0.0)
+        st.dataframe(df_cat_pivot, use_container_width=True)
 
-        # ==================== RESUMO POR CONTA ====================
-        st.markdown("### 📂 Resumo de Despesas por Conta")
-        df_acc = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Conta")["Valor"].sum().reset_index()
-        st.dataframe(df_acc, use_container_width=True)
+        # --- Ranking de Categorias ---
+        st.markdown("### 🏆 Ranking de Categorias")
+        df_rank = df_filtrado[df_filtrado["Tipo"]=="Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+        df_rank["% Total"] = (df_rank["Valor"]/df_rank["Valor"].sum()*100).round(1).astype(str) + "%"
+        df_rank = df_rank.sort_values("Valor", ascending=False)
+        st.dataframe(df_rank, use_container_width=True)
 
-    else:
-        st.info("Nenhum lançamento disponível para análise.")
+        # --- Tracking por Conta ---
+        st.markdown("### 🏦 Tracking por Conta")
+        df_track_conta = df_filtrado.groupby(["AnoMes","Conta"])[["Receita","Despesa"]].sum().reset_index()
+        df_track_conta["Cash Flow"] = df_track_conta["Receita"] - df_track_conta["Despesa"]
+        df_pivot_conta = df_track_conta.pivot_table(index="AnoMes", columns="Conta", values="Cash Flow", fill_value=0.0)
+        st.dataframe(df_pivot_conta, use_container_width=True)
+
+        # --- Tracking de Cartões ---
+        st.markdown("### 💳 Tracking de Cartões de Crédito")
+        if not st.session_state.cartoes.empty:
+            df_cartoes = st.session_state.cartoes.copy()
+            df_cartoes["Limite"] = pd.to_numeric(df_cartoes["Limite"], errors="coerce").fillna(0.0)
+            df_despesas_cartao = df_filtrado[df_filtrado["Conta"].isin(df_cartoes["Nome"].tolist())]
+            gastos_por_cartao = df_despesas_cartao.groupby("Conta")["Valor"].sum().reset_index(name="ValorConsumido")
+            df_cartoes_track = pd.merge(df_cartoes, gastos_por_cartao, left_on="Nome", right_on="Conta", how="left").fillna(0.0)
+            df_cartoes_track["% Limite Consumido"] = (df_cartoes_track["ValorConsumido"]/df_cartoes_track["Limite"]*100).round(1).astype(str) + "%"
+            df_cartoes_track["% da Renda"] = (df_cartoes_track["ValorConsumido"]/entradas*100).round(1).astype(str) + "%" if entradas>0 else "0%"
+            df_cartoes_track["Valor a Pagar"] = df_cartoes_track["ValorConsumido"]
+            st.dataframe(df_cartoes_track[["Nome","Limite","ValorConsumido","% Limite Consumido","Valor a Pagar","% da Renda"]], use_container_width=True)
+
+        # --- Indicadores de Eficiência ---
+        st.markdown("### ⚙️ Indicadores de Eficiência")
+        ticket_medio_receita = df_filtrado[df_filtrado["Tipo"]=="Receita"]["Valor"].mean()
+        ticket_medio_despesa = df_filtrado[df_filtrado["Tipo"]=="Despesa"]["Valor"].mean()
+        num_lancamentos = df_filtrado.shape[0]
+        concentracao = df_rank.iloc[0]["% Total"] if not df_rank.empty else "0%"
+        st.write(f"- Ticket médio Receita: R$ {ticket_medio_receita:,.2f}")
+        st.write(f"- Ticket médio Despesa: R$ {ticket_medio_despesa:,.2f}")
+        st.write(f"- Nº de lançamentos: {num_lancamentos}")
+        st.write(f"- Concentração maior categoria: {concentracao}")
+
+        # --- Mapa de Calor ---
+        st.markdown("### 🌡️ Mapa de Calor de Despesas")
+        df_heat = df_filtrado[df_filtrado["Tipo"]=="Despesa"].copy()
+        df_heat["Mes"] = df_heat["Data"].dt.month         
+            
 elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
