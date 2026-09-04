@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard", "Dashboard 2", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
+    "Dashboard", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -401,24 +401,6 @@ elif aba == "Dashboard 2":
         st.markdown("### 📈 Entradas vs Saídas")
         df_comp = pd.DataFrame({
             "Tipo": ["Entradas", "Saídas"],
-            "Valor": [entradas, saidas_cc]
-        })
-        chart_comp = alt.Chart(df_comp).mark_bar().encode(
-            x="Tipo:N", y="Valor:Q", color="Tipo:N", tooltip=["Tipo", "Valor"]
-        ).properties(height=300)
-        st.altair_chart(chart_comp, use_container_width=True)
-
-        # BLOCO 6: Indicadores Avançados
-        st.markdown("### 📌 Indicadores Executivos")
-        net_savings_rate = (saldo_liquido / entradas * 100) if entradas > 0 else 0.0
-        comprometimento_renda = (saidas_cc / entradas * 100) if entradas > 0 else 0.0
-        cash_ratio_val = (entradas / saidas_cc) if saidas_cc > 0 else 0.0
-        burn_rate_val = abs(saldo_liquido) if saldo_liquido < 0 else 0.0
-
-        st.metric("💰 Taxa de Poupança", f"{net_savings_rate:.1f}%")
-        st.metric("📊 Comprom. Renda", f"{comprometimento_renda:.1f}%", delta_color="inverse")
-        st.metric("🛡️ Cash Ratio", f"{cash_ratio_val:.2f}x")
-        st.metric("🔥 Burn Rate", f"R$ {burn_rate_val:,.2f}", delta_color="inverse")
 
 elif aba == "Dashboard 3":
     st.subheader("📊 Dashboard 3 - Painel Executivo Pessoal de Alta Performance")
