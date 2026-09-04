@@ -1029,6 +1029,100 @@ elif aba == "Monthly Audit 3":
 
 elif aba == "Monthly Audit":
     st.subheader("📒 Monthly Audit - Auditoria Completa")
+    elif aba == "Monthly Audit":
+    st.subheader("📋 Monthly Audit - Auditoria Financeira Dinâmica")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        # Tratamento inicial
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # ==================== FILTROS ====================
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="audit_status")
+        with col_f2:
+            data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date(), key="audit_ini")
+        with col_f3:
+            data_fim = st.date_input("📅 Data Final", df["Data"].max().date(), key="audit_fim")
+
+        df_filtrado = df[(df["Data"].dt.date >= data_ini) & (df["Data"].dt.date <= data_fim)]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        # ==================== TABELA CRUZADA ====================
+        cartoes_nomes = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
+
+        df_filtrado["Fixas"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and "fixa" in r["Categoria"].lower() else 0.0, axis=1)
+        df_filtrado["Variaveis"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and "variavel" in r["Categoria"].lower() else 0.0, axis=1)
+        df_filtrado["Cartoes"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" and r["Conta"] in cartoes_nomes else 0.0, axis=1)
+        df_filtrado["Debts"] = df_filtrado.apply(lambda r: r["Valor"] if "debt" in r["Categoria"].lower() else 0.0, axis=1)
+        df_filtrado["Receitas"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Receita" else 0.0, axis=1)
+
+        pivot_audit = df_filtrado.pivot_table(
+            index="AnoMes",
+            values=["Receitas","Fixas","Variaveis","Cartoes","Debts"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index().sort_values("AnoMes")
+
+        pivot_audit["% Renda Comprometida"] = ((pivot_audit["Fixas"]+pivot_audit["Variaveis"]+pivot_audit["Cartoes"]+pivot_audit["Debts"]) / pivot_audit["Receitas"] * 100).round(1)
+
+        # ==================== EXIBIÇÃO ====================
+        pivot_fmt = pivot_audit.copy()
+        for col in ["Receitas","Fixas","Variaveis","Cartoes","Debts"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+        pivot_fmt["% Renda Comprometida"] = pivot_fmt["% Renda Comprometida"].apply(lambda x: f"{x:.1f}%")
+
+        st.dataframe(aplicar_estilo_tabela(pivot_fmt.set_index("AnoMes").style, subset=["% Renda Comprometida"]), use_container_width=True)
+
+        # Exportação da tabela principal
+        csv_audit = pivot_audit.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Baixar Tabela Audit (CSV)",
+            data=csv_audit,
+            file_name=f"audit_tabela_{datetime.today().strftime('%Y-%m-%d')}.csv",
+            mime="text/csv"
+        )
+
+        st.markdown("### 📈 Evolução de Dívidas e Despesas")
+        chart_audit = alt.Chart(pivot_audit.melt(id_vars="AnoMes", value_vars=["Fixas","Variaveis","Cartoes","Debts"], var_name="Tipo", value_name="Valor")).mark_line(point=True).encode(
+            x="AnoMes:N", y="Valor:Q", color="Tipo:N", tooltip=["AnoMes","Tipo","Valor"]
+        ).properties(height=380).interactive()
+        st.altair_chart(chart_audit, use_container_width=True)
+
+        # ==================== CURVA ABC ====================
+        st.markdown("### 📉 Curva ABC de Dívidas e Despesas")
+        df_abc = df_filtrado[(df_filtrado["Tipo"] == "Despesa") | (df_filtrado["Debts"] > 0)].groupby("Categoria")["Valor"].sum().reset_index()
+        if not df_abc.empty:
+            df_abc = df_abc.sort_values(by="Valor", ascending=False)
+            df_abc["Acumulado_%"] = (df_abc["Valor"].cumsum() / df_abc["Valor"].sum()) * 100
+
+            base_abc = alt.Chart(df_abc).encode(x=alt.X("Categoria:N", sort="-y", title="Categoria"))
+            bar_abc = base_abc.mark_bar(color="#264653").encode(
+                y=alt.Y("Valor:Q", title="Gasto Total (R$)"),
+                tooltip=["Categoria", "Valor"]
+            )
+            line_abc = base_abc.mark_line(strokeWidth=3, color="#e76f51", point=True).encode(
+                y=alt.Y("Acumulado_%:Q", title="Acumulado (%)", scale=alt.Scale(domain=[0, 105]))
+            )
+            chart_abc = alt.layer(bar_abc, line_abc).resolve_scale(y="independent").properties(height=380).interactive()
+            st.altair_chart(chart_abc, use_container_width=True)
+
+            # Exportação rápida da Curva ABC
+            csv_abc = df_abc.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Baixar Curva ABC (CSV)",
+                data=csv_abc,
+                file_name=f"audit_curva_abc_{datetime.today().strftime('%Y-%m-%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Não há despesas ou dívidas suficientes no filtro selecionado para compor a Curva ABC.")
+    else:
+        st.info("Nenhum lançamento disponível para auditoria.")
     st.markdown("Painel robusto com **Budget vs Efetivado**, auditoria por **Conta** e **Categoria**, múltiplos filtros, indicadores percentuais, mapa visual e gráficos de linha.")
 
     df = st.session_state.lancamentos
