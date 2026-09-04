@@ -80,7 +80,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
-    "Dashboard Unificado", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
+    "Dashboard", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit 2", "Monthly Audit",
     "Financial Indicators", "Statistical Indicators 2", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
@@ -124,9 +124,8 @@ if arquivo_upload is not None:
         st.sidebar.error(f"Erro ao restaurar arquivo: {e}")
 
 # ==================== BLOCOS DAS ABAS ====================
-
-elif aba == "Dashboard Unificado":
-    st.subheader("📊 Dashboard Unificado - Painel Completo")
+elif aba == "Dashboard":
+    st.subheader("📊 Dashboard - Painel Completo Unificado")
 
     df = st.session_state.lancamentos
     if not df.empty:
@@ -248,10 +247,11 @@ elif aba == "Dashboard Unificado":
         # ==================== RESUMO POR CONTA ====================
         st.markdown("### 📂 Resumo de Despesas por Conta")
         df_acc = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("Conta")["Valor"].sum().reset_index()
-        st.dataframe(df_acc, use_container_width
-        
+        st.dataframe(df_acc, use_container_width=True)
 
-            elif aba == "Resumo Geral":
+    else:
+        st.info("Nenhum lançamento disponível para análise.")
+elif aba == "Resumo Geral":
     st.subheader("📋 Resumo Geral - Visão Inteligente")
     st.markdown("Consolidação de Entradas, Saídas, Transferências e Cartões com filtro dinâmico de Status.")
 
