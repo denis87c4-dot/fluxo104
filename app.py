@@ -791,228 +791,94 @@ elif aba == "Projections & Charts":
         if not df_heatmap.empty:
             df_heatmap["MesNum"] = df_heatmap["Data"].dt.month
             df_heatmap["MesNome"] = df_heatmap["Data"].dt.strftime("%b")
-
-        elif aba == "Projections & Charts":
-    st.subheader("📈 Projections & Charts — Central Avançada de Gráficos & Projeções")
-    st.markdown("Painel analítico corporativo contendo **Filtros Globais**, **Smart Insights Automatizados**, **Gráficos de Pareto**, **Projeções Estatísticas** e **Exportação de Dados**.")
-    
-    df = st.session_state.lancamentos
-    if not df.empty:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-        
-        # ==================== PAINEL DE FILTROS GLOBAIS ====================
-        with st.expander("🔍 Filtros Globais & Granularidade de Análise", expanded=True):
-            fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-            with fc1:
-                filtro_status = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="pc_status")
-            with fc2:
-                cat_disponiveis = df["Categoria"].unique().tolist()
-                filtro_categorias = st.multiselect("🏷️ Categorias", cat_disponiveis, default=cat_disponiveis, key="pc_cat")
-            with fc3:
-                granularidade = st.selectbox("⏱️ Agrupamento", ["Mensal", "Trimestral"], key="pc_gran")
-            with fc4:
-                data_min_base = df["Data"].min().date()
-                data_ini_proj = st.date_input("📅 Data Inicial", data_min_base, key="pc_dini")
-            with fc5:
-                data_max_base = df["Data"].max().date()
-                data_fim_proj = st.date_input("📅 Data Final", data_max_base, key="pc_dfim")
-                
-        # Aplicação dos Filtros
-        df_f = df[
-            (df["Data"].dt.date >= data_ini_proj) &
-            (df["Data"].dt.date <= data_fim_proj) &
-            (df["Categoria"].isin(filtro_categorias))
-        ].copy()
-        if filtro_status != "Todos":
-            df_f = df_f[df_f["Status"] == filtro_status]
+            pivot_heat = df_heatmap.pivot_table(index="Categoria", columns="MesNome", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
+            df_melted = pivot_heat.melt(id_vars="Categoria", var_name="Mes", value_name="Gasto")
             
-        st.markdown("---")
-        
-        if not df_f.empty:
-            # Tratamento de Granularidade Temporal
-            if granularidade == "Trimestral":
-                df_f["PeriodoLabel"] = df_f["Data"].dt.to_period("Q"].astype(str)
-            else:
-                df_f["PeriodoLabel"] = df_f["AnoMes"]
-
-            cartoes_nomes_proj = st.session_state.cartoes["Nome"].tolist() if not st.session_state.cartoes.empty else []
-            df_f["Expense_CC"] = df_f.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" and r["Conta"] not in cartoes_nomes_proj else 0.0, axis=1)
-            df_f["Income_Val"] = df_f.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
-            
-            pivot_graf = df_f.pivot_table(index="PeriodoLabel", values=["Income_Val", "Expense_CC"], aggfunc="sum", fill_value=0.0).reset_index()
-            pivot_graf = pivot_graf.rename(columns={"Income_Val": "Receita", "Expense_CC": "Despesa"})
-            pivot_graf["CashFlow"] = pivot_graf["Receita"] - pivot_graf["Despesa"]
-            pivot_graf["Acumulado"] = pivot_graf["CashFlow"].cumsum()
-            
-            # ==================== EXECUTIVE HEALTH SCORE & INSIGHTS ====================
-            rec_tot_p = pivot_graf["Receita"].sum()
-            desp_tot_p = pivot_graf["Despesa"].sum()
-            margem_geral = ((rec_tot_p - desp_tot_p) / rec_tot_p * 100) if rec_tot_p > 0 else 0.0
-            health_score = int(np.clip(50 + (margem_geral * 0.5), 0, 100))
-            
-            sc_1, sc_2 = st.columns([1, 3])
-            with sc_1:
-                st.metric("🛡️ Financial Health Score", f"{health_score} / 100 pts", delta=f"{margem_geral:.1f}% Margem")
-            with sc_2:
-                st.markdown("##### 💡 Smart Executive Insights")
-                if margem_geral > 20:
-                    st.success("✨ Excelente retenção de caixa no período selecionado. O fluxo apresenta alta robustez operacional.")
-                elif margem_geral >= 0:
-                    st.warning("⚠️ Operação equilibrada, porém com margem de segurança estreita. Monitore picos de despesas.")
-                else:
-                    st.error("🚨 Alerta crítico: As despesas superaram as receitas no corte atual. Ação corretiva recomendada.")
-
-            st.markdown("---")
-
-            # ==================== CÉLULA SUSPENSA ====================
-            st.markdown("### 🛸 Célula Suspensa (Simulador Preditivo de Ajuste de Orçamento)")
-            cs1, cs2, cs3 = st.columns(3)
-            with cs1:
-                fator_ajuste = st.slider("Ajuste Percentual em Despesas (%)", -50, 50, 0, 5)
-            with cs2:
-                aporte_extra = st.number_input("Injeção / Retirada Fixa Periódica (R$)", value=0.0, step=100.0)
-            with cs3:
-                horizonte_sim = st.slider("Horizonte de Projeção", 3, 24, 6)
-                
-            ultima_rec = pivot_graf["Receita"].iloc[-1] if not pivot_graf.empty else 0.0
-            ultima_desp = pivot_graf["Despesa"].iloc[-1] if not pivot_graf.empty else 0.0
-            desp_ajustada = ultima_desp * (1 + (fator_ajuste / 100.0))
-            fluxo_simulado = (ultima_rec + aporte_extra) - desp_ajustada
-            st.metric("Projeção de Cash Flow Ajustado (Próximo Período)", f"R$ {fluxo_simulado:,.2f}", delta=f"{fator_ajuste:+d}% nas despesas")
-            
-            st.markdown("---")
-            st.markdown("### 📊 Galeria Completa de Gráficos de Elite")
-            
-            # GRÁFICO 1: GRÁFICO DE PARETO DE DESPESAS (ABC)
-            st.markdown("#### 1️⃣ Gráfico de Pareto de Despesas (Curva ABC & Impacto Acumulado)")
-            df_pareto = df_f[df_f["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
-            if not df_pareto.empty:
-                df_pareto = df_pareto.sort_values(by="Valor", ascending=False)
-                df_pareto["Acumulado_%"] = (df_pareto["Valor"].cumsum() / df_pareto["Valor"].sum()) * 100
-                
-                base_par = alt.Chart(df_pareto).encode(x=alt.X('Categoria:N', sort='-y', title='Categoria'))
-                bar_par = base_par.mark_bar(color='#264653').encode(y=alt.Y('Valor:Q', title='Gasto Total (R$)'), tooltip=['Categoria', 'Valor'])
-                line_par = base_par.mark_line(strokeWidth=3, color='#e76f51', point=True).encode(y=alt.Y('Acumulado_%:Q', title='Impacto Acumulado (%)', scale=alt.Scale(domain=[0, 105])))
-                chart_pareto_final = alt.layer(bar_par, line_par).resolve_scale(y='independent').properties(height=360).interactive()
-                st.altair_chart(chart_pareto_final, use_container_width=True)
-            else:
-                st.info("Nenhuma despesa nos filtros para gerar o Pareto.")
-
-            # GRÁFICO 2: LINHA DE PROJEÇÃO DE FLUXO DE CAIXA FUTURO
-            st.markdown("#### 2️⃣ Linha de Projeção de Caixa Futuro (Tendência com Regressão Linear)")
-            if len(pivot_graf) >= 2:
-                x_vals = np.arange(len(pivot_graf))
-                y_cf = pivot_graf["CashFlow"].values
-                a_cf, b_cf = np.polyfit(x_vals, y_cf, 1)
-                
-                dados_proj = []
-                ult_p_str = pivot_graf["PeriodoLabel"].max()
-                
-                for step in range(1, 13):
-                    x_fut = len(pivot_graf) + step - 1
-                    val_proj = (a_cf * x_fut) + b_cf
-                    dados_proj.append({"Periodo": f"Proj +{step}", "CashFlow_Projetado": val_proj})
-                    
-                df_proj_line = pd.DataFrame(dados_proj)
-                chart_proj_line = alt.Chart(df_proj_line).mark_line(strokeWidth=3, point=True, color='#2a9d8f').encode(
-                    x=alt.X('Periodo:N', title='Horizonte de Projeção Futura'),
-                    y=alt.Y('CashFlow_Projetado:Q', title='Cash Flow Projetado (R$)'),
-                    tooltip=['Periodo', 'CashFlow_Projetado']
-                ).properties(height=360).interactive()
-                st.altair_chart(chart_proj_line, use_container_width=True)
-            else:
-                st.info("Dados temporais insuficientes para traçar a linha de projeção.")
-
-            # GRÁFICOS 3 a 12 (DENSIDADE MÁXIMA DE GRÁFICOS)
-            col_g1, col_g2 = st.columns(2)
-            
-            with col_g1:
-                st.markdown("#### 3️⃣ Income vs Expense (Evolução)")
-                df_melt_ie = pivot_graf.melt(id_vars="PeriodoLabel", value_vars=["Receita", "Despesa"], var_name="Métrica", value_name="Valor")
-                ch_ie = alt.Chart(df_melt_ie).mark_line(strokeWidth=3, point=True).encode(
-                    x='PeriodoLabel:N', y='Valor:Q', color='Métrica:N', tooltip=['PeriodoLabel', 'Métrica', 'Valor']
-                ).properties(height=300).interactive()
-                st.altair_chart(ch_ie, use_container_width=True)
-                
-                st.markdown("#### 5️⃣ Runway Preditivo de Caixa")
-                saldo_atual = pivot_graf["Acumulado"].iloc[-1] if not pivot_graf.empty else 0.0
-                media_desp = pivot_graf["Despesa"].mean() if not pivot_graf.empty else 1.0
-                runway_vals = [max(0, saldo_atual - (media_desp * m)) for m in range(13)]
-                df_rw = pd.DataFrame({"Mes": [f"+{m}m" for m in range(13)], "Saldo": runway_vals})
-                ch_rw = alt.Chart(df_rw).mark_area(color='#1f77b4', opacity=0.4).encode(x='Mes:N', y='Saldo:Q', tooltip=['Mes', 'Saldo']).properties(height=300).interactive()
-                st.altair_chart(ch_rw, use_container_width=True)
-
-                st.markdown("#### 7️⃣ Dispersão de Despesas por Dia")
-                df_scat = df_f[df_f["Tipo"] == "Despesa"].copy()
-                if not df_scat.empty:
-                    df_scat["Dia"] = df_scat["Data"].dt.day
-                    ch_scat = alt.Chart(df_scat).mark_circle(size=70).encode(x='Dia:Q', y='Valor:Q', color='Categoria:N', tooltip=['Descricao', 'Valor', 'Categoria']).properties(height=300).interactive()
-                    st.altair_chart(ch_scat, use_container_width=True)
-                else:
-                    st.info("Sem dados.")
-
-                st.markdown("#### 9️⃣ Índice de Resiliência de Caixa")
-                pivot_graf["Resiliencia"] = np.clip(((pivot_graf["CashFlow"] / (pivot_graf["Despesa"] + 1)) * 50) + 50, 0, 100)
-                ch_res = alt.Chart(pivot_graf).mark_bar(color='#2a9d8f').encode(x='PeriodoLabel:N', y='Resiliencia:Q', tooltip=['PeriodoLabel', 'Resiliencia']).properties(height=300).interactive()
-                st.altair_chart(ch_res, use_container_width=True)
-
-            with col_g2:
-                st.markdown("#### 4️⃣ Cash Flow Líquido & Acumulado")
-                df_melt_ca = pivot_graf.melt(id_vars="PeriodoLabel", value_vars=["CashFlow", "Acumulado"], var_name="Métrica", value_name="Valor")
-                ch_ca = alt.Chart(df_melt_ca).mark_line(strokeWidth=3, point=True).encode(
-                    x='PeriodoLabel:N', y='Valor:Q', color='Métrica:N', tooltip=['PeriodoLabel', 'Métrica', 'Valor']
-                ).properties(height=300).interactive()
-                st.altair_chart(ch_ca, use_container_width=True)
-
-                st.markdown("#### 6️⃣ Burn Rate Velocity Periódico")
-                pivot_graf["DeltaDesp"] = pivot_graf["Despesa"].diff().fillna(0.0)
-                ch_br = alt.Chart(pivot_graf).mark_bar().encode(x='PeriodoLabel:N', y='DeltaDesp:Q', color=alt.condition(alt.datum.DeltaDesp > 0, alt.value('#e76f51'), alt.value('#2a9d8f')), tooltip=['PeriodoLabel', 'DeltaDesp']).properties(height=300).interactive()
-                st.altair_chart(ch_br, use_container_width=True)
-
-                st.markdown("#### 8️⃣ Mapa de Calor Sazonal de Gastos")
-                df_hm = df_f[df_f["Tipo"] == "Despesa"].copy()
-                if not df_hm.empty:
-                    df_hm["MesNome"] = df_hm["Data"].dt.strftime("%b")
-                    hm_pvt = df_hm.pivot_table(index="Categoria", columns="MesNome", values="Valor", aggfunc="sum", fill_value=0.0).reset_index()
-                    hm_melt = hm_pvt.melt(id_vars="Categoria", var_name="Mes", value_name="Gasto")
-                    ch_hm = alt.Chart(hm_melt).mark_rect().encode(x='Mes:N', y='Categoria:N', color=alt.Color('Gasto:Q', scale=alt.Scale(scheme='orangered')), tooltip=['Categoria', 'Mes', 'Gasto']).properties(height=300).interactive()
-                    st.altair_chart(ch_hm, use_container_width=True)
-                else:
-                    st.info("Sem dados.")
-
-                st.markdown("#### 🔟 Simulação Estocástica de Monte Carlo")
-                if len(pivot_graf) >= 2:
-                    mc_data = []
-                    np.random.seed(104)
-                    m_cf = pivot_graf["CashFlow"].mean()
-                    s_cf = pivot_graf["CashFlow"].std() if len(pivot_graf) > 1 else 100.0
-                    for s in range(50):
-                        s_val = saldo_atual
-                        for m in range(1, 7):
-                            s_val += np.random.normal(m_cf, s_cf)
-                            mc_data.append({"Sim": s, "Periodo": f"+{m}m", "Saldo": s_val})
-                    df_mc = pd.DataFrame(mc_data)
-                    ch_mc = alt.Chart(df_mc).mark_line(opacity=0.25, color='#264653').encode(x='Periodo:N', y='Saldo:Q', detail='Sim:N').properties(height=300).interactive()
-                    st.altair_chart(ch_mc, use_container_width=True)
-                else:
-                    st.info("Dados insuficientes para Monte Carlo.")
-
-            # ==================== BOTÃO DE EXPORTAÇÃO EXECUTIVA ====================
-            st.markdown("---")
-            st.markdown("### 📥 Exportar Dados Analíticos Destes Filtros")
-            csv_export = df_f.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Baixar Base Filtrada da Aba (.csv)",
-                data=csv_export,
-                file_name=f"projections_charts_export_{datetime.today().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
-            )
+            chart_heat = alt.Chart(df_melted).mark_rect().encode(
+                x=alt.X('Mes:N', title='Mês'),
+                y=alt.Y('Categoria:N', title='Categoria'),
+                color=alt.Color('Gasto:Q', scale=alt.Scale(scheme='orangered'), title='Volume de Gastos (R$)'),
+                tooltip=['Categoria', 'Mes', 'Gasto']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_heat, use_container_width=True)
         else:
-            st.warning("⚠️ Nenhum registro encontrado com os filtros aplicados nesta aba.")
+            st.info("Dados insuficientes para gerar o mapa de calor.")
+
+        st.markdown("---")
+        st.markdown("### 9️⃣ Simulação de Monte Carlo Pessoal (Stress Test de Volatilidade)")
+        st.markdown("Simula 100 trajetórias estocásticas de caixa baseadas no desvio padrão histórico para avaliar o risco de saldo negativo.")
+        if len(pivot_graf) >= 2:
+            media_cf = pivot_graf["CashFlow"].mean()
+            std_cf = pivot_graf["CashFlow"].std() if len(pivot_graf) > 1 else 100.0
+            
+            simulacoes_mc = []
+            np.random.seed(42)
+            for sim in range(100):
+                saldo_sim = saldo_atual_caixa
+                for m in range(1, 13):
+                    fluxo_aleatorio = np.random.normal(media_cf, std_cf)
+                    saldo_sim += fluxo_aleatorio
+                    simulacoes_mc.append({"Simulacao": sim, "Mes": f"Mês +{m}", "Saldo": saldo_sim})
+            
+            df_mc = pd.DataFrame(simulacoes_mc)
+            chart_mc = alt.Chart(df_mc).mark_line(opacity=0.2, color='#264653').encode(
+                x=alt.X('Mes:N', title='Horizonte Futuro'),
+                y=alt.Y('Saldo:Q', title='Simulações de Saldo (R$)'),
+                detail='Simulacao:N'
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_mc, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para rodar a Simulação de Monte Carlo.")
+
+        st.markdown("---")
+        st.markdown("### 🔟 Índice de Resiliência de Fluxo de Caixa (Resilience Index)")
+        if len(pivot_graf) > 0:
+            df_res = pivot_graf.copy()
+            df_res["Resiliencia"] = np.clip(((df_res["CashFlow"] / (df_res["Despesa"] + 1)) * 50) + 50, 0, 100)
+            
+            chart_res = alt.Chart(df_res).mark_bar().encode(
+                x=alt.X('AnoMes:N', title='Mês'),
+                y=alt.Y('Resiliencia:Q', title='Índice de Resiliência (0 a 100)', scale=alt.Scale(domain=[0, 100])),
+                color=alt.condition(
+                    alt.datum.Resiliencia >= 50,
+                    alt.value('#2a9d8f'),
+                    alt.value('#e76f51')
+                ),
+                tooltip=['AnoMes', 'Resiliencia', 'CashFlow']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_res, use_container_width=True)
+        else:
+            st.info("Dados insuficientes para calcular a resiliência.")
+
+        st.markdown("---")
+        st.markdown("### 1️⃣1️⃣ Dispersão de Despesas e Elasticidade (Valor vs Dia do Mês)")
+        df_scatter = df[df["Tipo"] == "Despesa"].copy()
+        if not df_scatter.empty:
+            df_scatter["DiaMes"] = df_scatter["Data"].dt.day
+            chart_scat = alt.Chart(df_scatter).mark_circle(size=80).encode(
+                x=alt.X('DiaMes:Q', title='Dia do Mês'),
+                y=alt.Y('Valor:Q', title='Valor da Despesa (R$)'),
+                color=alt.Color('Categoria:N', scale=alt.Scale(scheme='tableau10')),
+                tooltip=['Descricao', 'Valor', 'Categoria', 'Data']
+            ).properties(height=350).interactive()
+            st.altair_chart(chart_scat, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa para exibir no gráfico de dispersão.")
+
+        st.markdown("---")
+        st.markdown("### 1️⃣2️⃣ Índice de Autonomia de Renda Passiva (Financial Freedom Gauge)")
+        taxa_retorno_passivo = st.slider("Taxa de Retorno Anual para Renda Passiva (% a.a.)", min_value=1.0, max_value=15.0, value=6.0, step=0.5)
+        taxa_mes_passivo = taxa_retorno_passivo / 100.0 / 12.0
+        
+        media_despesas_anual = pivot_graf["Despesa"].mean() if not pivot_graf.empty else 1.0
+        renda_passiva_estimada = saldo_atual_caixa * taxa_mes_passivo
+        autonomia_pct = min((renda_passiva_estimada / (media_despesas_anual if media_despesas_anual > 0 else 1.0)) * 100, 100.0)
+        
+        st.metric("Grau de Independência Atual", f"{autonomia_pct:.2f}% dos gastos cobertos", delta=f"R$ {renda_passiva_estimada:,.2f} / mês de renda passiva teórica")
+        st.progress(int(max(0, min(100, autonomia_pct))))
+        
     else:
-        st.info("Nenhum lançamento registrado na base para exibir gráficos.")
+        st.info("Nenhum lançamento registrado para exibir os gráficos analíticos e de projeção.")
 
 elif aba == "Monthly Audit 3":
     st.subheader("📊 Monthly Audit 3 - Auditoria Detalhada por Categoria")
