@@ -81,7 +81,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit",
-    "Financial Indicators", "Statistical Indicators", "Statistical 3", "Cadastro (Form)",
+    "Financial Indicators", "Statistical Indicators", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
@@ -1472,59 +1472,6 @@ elif aba == "Statistical 3":
             futuros = 6
             proj_x = np.arange(len(pivot), len(pivot) + futuros)
             proj_y = a * proj_x + b
-            proj_periodos = [(ultimo_mes + relativedelta(months=i)).strftime("%Y-%m") for i in range(1, futuros+1)]
-            df_proj = pd.DataFrame({"AnoMes": proj_periodos, "CashFlow": proj_y, "Tipo": "Projeção"})
-        else:
-            df_proj = pd.DataFrame()
-
-        df_hist = pivot[["AnoMes", "CashFlow"]].copy()
-        df_hist["Tipo"] = "Histórico"
-        df_final = pd.concat([df_hist, df_proj])
-
-        chart_trend = alt.Chart(df_final).mark_line(point=True, strokeWidth=3).encode(
-            x=alt.X("AnoMes:N", title="Período"),
-            y=alt.Y("CashFlow:Q", title="Fluxo de Caixa (R$)"),
-            color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Histórico", "Projeção"], range=["#2a9d8f", "#e63946"])),
-            tooltip=["AnoMes", "CashFlow", "Tipo"]
-        ).properties(height=350).interactive()
-        st.altair_chart(chart_trend, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📊 Volatilidade das Despesas (Scatter Plot)")
-        df_vol = df_filtrado[df_filtrado["Tipo"] == "Despesa"].groupby("AnoMes")["Valor"].sum().reset_index()
-        if not df_vol.empty:
-            chart_vol = alt.Chart(df_vol).mark_circle(size=100, color="#e63946").encode(
-                x=alt.X("AnoMes:N", title="Período"),
-                y=alt.Y("Valor:Q", title="Total de Despesas (R$)"),
-                tooltip=["AnoMes", "Valor"]
-            ).properties(height=350).interactive()
-            st.altair_chart(chart_vol, use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📐 Métricas Estatísticas")
-        despesas_vals = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].values
-        if len(despesas_vals) > 0:
-            media = np.mean(despesas_vals)
-            mediana = np.median(despesas_vals)
-            desvio_padrao = np.std(despesas_vals, ddof=1)
-            variancia = np.var(despesas_vals, ddof=1)
-            coef_var = (desvio_padrao / media * 100) if media != 0 else 0
-
-            col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
-            col_s1.metric("📊 Média", f"R$ {media:,.2f}")
-            col_s2.metric("📊 Mediana", f"R$ {mediana:,.2f}")
-            col_s3.metric("📊 Desvio Padrão", f"R$ {desvio_padrao:,.2f}")
-            col_s4.metric("📊 Variância", f"R$ {variancia:,.2f}")
-            col_s5.metric("📊 Coef. Variação", f"{coef_var:.1f}%")
-
-        st.markdown("---")
-        st.markdown("### ✅ Insights Executivos")
-        if not df_proj.empty:
-            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}. A tendência indica que nos próximos 3 meses o caixa pode chegar a aproximadamente R$ {df_proj['CashFlow'].head(3).sum():,.2f}, e em 6 meses R$ {df_proj['CashFlow'].sum():,.2f}.")
-        else:
-            st.write(f"Nos últimos {periodo_sel}, o fluxo de caixa acumulado foi de R$ {saldo_liquido:,.2f}, mas não há dados suficientes para projeções futuras.")
-    else:
-        st.info("Nenhum lançamento disponível para análise estatística.")
 
 elif aba == "Cadastro (Form)":
     st.subheader("Novo Registro (Form)")
