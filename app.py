@@ -7,7 +7,6 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import io
 import zipfile
-from scipy.stats import norm
 
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
@@ -1437,17 +1436,29 @@ if aba == "Statistical 2":
             media = np.mean(valores)
             desvio = np.std(valores)
 
-            st.write(f"📌 Média: {media:.2f}, Desvio Padrão: {desvio:.2f}")
+            st.write(f"📌 Média: {media:.2f} | Desvio Padrão: {desvio:.2f}")
 
-            # Curva normal
-            x = np.linspace(media - 3*desvio, media + 3*desvio, 300)
-            y = norm.pdf(x, media, desvio)
+            # Curva normal aproximada por formula matemática pura com numpy
+            x = np.linspace(media - 3*desvio if desvio > 0 else media - 1, media + 3*desvio if desvio > 0 else media + 1, 300)
+            if desvio > 0:
+                y = (1 / (desvio * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - media) / desvio) ** 2)
+            else:
+                y = np.zeros_like(x)
+
             df_curve = pd.DataFrame({"x": x, "y": y})
 
-            # Valor escolhido
+            # Valor escolhido pelo usuário
             valor_input = st.number_input("Digite um valor para calcular probabilidade", value=float(media))
-            prob_real = norm.cdf(valor_input, media, desvio)
-            st.write(f"🔮 Probabilidade de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
+            
+            # Cálculo de probabilidade acumulada aproximada usando função de erro do numpy/math
+            import math
+            def normal_cdf(val, m, s):
+                if s == 0:
+                    return 1.0 if val >= m else 0.0
+                return 0.5 * (1 + math.erf((val - m) / (s * math.sqrt(2))))
+
+            prob_real = normal_cdf(valor_input, media, desvio)
+            st.write(f"🔮 Probabilidade estimada de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
 
             # Área sombreada até o valor escolhido
             df_shade = df_curve[df_curve["x"] <= valor_input]
@@ -1463,7 +1474,6 @@ if aba == "Statistical 2":
                 y="y"
             )
 
-            # Linhas de referência (média e desvios)
             ref_points = [media, media+0.5*desvio, media-0.5*desvio, media+desvio, media-desvio]
             df_refs = pd.DataFrame({"x": ref_points})
             refs = alt.Chart(df_refs).mark_rule(color="#264653", strokeDash=[5,5]).encode(x="x")
@@ -1475,14 +1485,13 @@ if aba == "Statistical 2":
             for p in ref_points:
                 prob_table.append({
                     "Referência": f"{p:.2f}",
-                    "Probabilidade ≤": f"{norm.cdf(p, media, desvio):.2%}"
+                    "Probabilidade ≤": f"{normal_cdf(p, media, desvio):.2%}"
                 })
             df_prob = pd.DataFrame(prob_table)
 
             st.markdown("### 📋 Tabela Resumo de Probabilidades")
             st.dataframe(df_prob, use_container_width=True)
 
-            # 🔹 Exportação CSV
             csv_export = df_prob.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="📥 Baixar Tabela Resumo (CSV)",
