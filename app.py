@@ -83,7 +83,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit",
-    "Financial Indicators", "Statistical Indicators", "Cadastro (Form)",
+    "Financial Indicators", "Statistical Indicators", "Statistical 2", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
