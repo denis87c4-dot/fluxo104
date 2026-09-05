@@ -7,6 +7,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import io
 import zipfile
+from scipy.stats import norm
+
 
 st.set_page_config(page_title="Fluxo104", page_icon="💰", layout="wide")
 st.title("💰 Fluxo104 - Gestão Financeira Executiva")
