@@ -1408,100 +1408,129 @@ elif aba == "Statistical Indicators":
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
 
-if aba == "Statistical 2":
-    st.subheader("📊 Statistical 2 - Distribuição Normal")
-    st.markdown("Curva de sino com área sombreada e tabela resumo de probabilidades.")
+elif aba == "Statistical 2":
+    st.subheader("📊 Statistical 2 - Estatísticas Avançadas")
+    st.markdown("Exploração de estatísticas descritivas, correlações e testes de hipótese com filtros dinâmicos.")
 
     df = st.session_state.lancamentos
     if not df.empty:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
 
-        # Filtros
-        status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
-        tipo_sel = st.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist())
-        data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date())
-        data_fim = st.date_input("📅 Data Final", df["Data"].max().date())
+        # ==================== FILTROS DINÂMICOS ====================
+        with st.expander("🔍 Filtros Estatísticos", expanded=True):
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            status_sel = col_f1.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="stat2_status")
+            tipo_sel = col_f2.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist(), key="stat2_tipo")
+            categoria_sel = col_f3.multiselect("🏷️ Categoria", df["Categoria"].unique().tolist(), default=df["Categoria"].unique().tolist(), key="stat2_cat")
+            conta_sel = col_f4.multiselect("🏦 Conta", df["Conta"].unique().tolist(), default=df["Conta"].unique().tolist(), key="stat2_conta")
 
+            col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+            data_inicio = col_d1.date_input("📅 Data Inicial", df["Data"].min().date(), key="stat2_ini")
+            data_fim = col_d2.date_input("📅 Data Final", df["Data"].max().date(), key="stat2_fim")
+            valor_min = col_d3.number_input("💵 Valor Mínimo (R$)", min_value=0.0, value=0.0, step=100.0, key="stat2_vmin")
+            valor_max = col_d4.number_input("💵 Valor Máximo (R$)", min_value=0.0, value=float(df["Valor"].max()), step=100.0, key="stat2_vmax")
+
+        # Aplicar filtros
         df_filtrado = df[
-            (df["Data"].dt.date >= data_ini) &
+            (df["Data"].dt.date >= data_inicio) &
             (df["Data"].dt.date <= data_fim) &
-            (df["Tipo"].isin(tipo_sel))
+            (df["Tipo"].isin(tipo_sel)) &
+            (df["Categoria"].isin(categoria_sel)) &
+            (df["Conta"].isin(conta_sel)) &
+            (df["Valor"] >= valor_min) &
+            (df["Valor"] <= valor_max)
         ]
         if status_sel != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
-        valores = df_filtrado["Valor"].values
-        if len(valores) > 0:
-            media = np.mean(valores)
-            desvio = np.std(valores)
+        st.markdown("---")
 
-            st.write(f"📌 Média: {media:.2f} | Desvio Padrão: {desvio:.2f}")
+        if not df_filtrado.empty:
+            # ==================== FUNÇÕES SIMPLES ====================
+            st.markdown("### 📈 Estatísticas Simples")
+            media, mediana, moda = df_filtrado["Valor"].mean(), df_filtrado["Valor"].median(), df_filtrado["Valor"].mode().iloc[0] if not df_filtrado["Valor"].mode().empty else 0.0
+            desvio, variancia, maximo, minimo = df_filtrado["Valor"].std(), df_filtrado["Valor"].var(), df_filtrado["Valor"].max(), df_filtrado["Valor"].min()
 
-            # Curva normal aproximada por formula matemática pura com numpy
-            x = np.linspace(media - 3*desvio if desvio > 0 else media - 1, media + 3*desvio if desvio > 0 else media + 1, 300)
-            if desvio > 0:
-                y = (1 / (desvio * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - media) / desvio) ** 2)
-            else:
-                y = np.zeros_like(x)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Média", f"R$ {media:,.2f}")
+            col2.metric("Mediana", f"R$ {mediana:,.2f}")
+            col3.metric("Moda", f"R$ {moda:,.2f}")
+            col4, col5, col6 = st.columns(3)
+            col4.metric("Desvio Padrão", f"{desvio:,.2f}")
+            col5.metric("Variância", f"{variancia:,.2f}")
+            col6.metric("Máx / Mín", f"R$ {maximo:,.2f} / R$ {minimo:,.2f}")
 
-            df_curve = pd.DataFrame({"x": x, "y": y})
+            st.markdown("---")
 
-            # Valor escolhido pelo usuário
-            valor_input = st.number_input("Digite um valor para calcular probabilidade", value=float(media))
-            
-            # Cálculo de probabilidade acumulada aproximada usando função de erro do numpy/math
-            import math
-            def normal_cdf(val, m, s):
-                if s == 0:
-                    return 1.0 if val >= m else 0.0
-                return 0.5 * (1 + math.erf((val - m) / (s * math.sqrt(2))))
+            # ==================== DISTRIBUIÇÃO NORMAL ====================
+            st.markdown("### 📊 Distribuição Normal")
+            bins = st.slider("Número de bins (intervalos)", min_value=10, max_value=100, value=40, step=5)
 
-            prob_real = normal_cdf(valor_input, media, desvio)
-            st.write(f"🔮 Probabilidade estimada de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
-
-            # Área sombreada até o valor escolhido
-            df_shade = df_curve[df_curve["x"] <= valor_input]
-
-            chart_curve = alt.Chart(df_curve).mark_line(color="#2a9d8f", strokeWidth=3).encode(
-                x=alt.X("x", title="Valor"),
-                y=alt.Y("y", title="Densidade"),
-                tooltip=["x", "y"]
+            chart_hist = alt.Chart(df_filtrado).mark_bar(color="#2a9d8f").encode(
+                alt.X("Valor:Q", bin=alt.Bin(maxbins=bins)),
+                alt.Y("count()")
             )
 
-            chart_shade = alt.Chart(df_shade).mark_area(color="#e76f51", opacity=0.4).encode(
-                x="x",
-                y="y"
+            media = df_filtrado["Valor"].mean()
+            desvio = df_filtrado["Valor"].std()
+            x_vals = np.linspace(df_filtrado["Valor"].min(), df_filtrado["Valor"].max(), 200)
+            y_vals = (1/(desvio*np.sqrt(2*np.pi))) * np.exp(-0.5*((x_vals-media)/desvio)**2)
+            df_norm = pd.DataFrame({"Valor": x_vals, "Densidade": y_vals})
+
+            chart_norm = alt.Chart(df_norm).mark_line(color="red", strokeWidth=3).encode(
+                x="Valor:Q", y="Densidade:Q"
             )
 
-            ref_points = [media, media+0.5*desvio, media-0.5*desvio, media+desvio, media-desvio]
-            df_refs = pd.DataFrame({"x": ref_points})
-            refs = alt.Chart(df_refs).mark_rule(color="#264653", strokeDash=[5,5]).encode(x="x")
+            st.altair_chart(chart_hist + chart_norm, use_container_width=True)
 
-            st.altair_chart(chart_curve + chart_shade + refs, use_container_width=True)
-
-            # 🔹 Tabela resumo de probabilidades
-            prob_table = []
-            for p in ref_points:
-                prob_table.append({
-                    "Referência": f"{p:.2f}",
-                    "Probabilidade ≤": f"{normal_cdf(p, media, desvio):.2%}"
-                })
-            df_prob = pd.DataFrame(prob_table)
-
-            st.markdown("### 📋 Tabela Resumo de Probabilidades")
-            st.dataframe(df_prob, use_container_width=True)
-
-            csv_export = df_prob.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Tabela Resumo (CSV)",
-                data=csv_export,
-                file_name=f"statistical2_resumo_{datetime.today().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
+            # ==================== BOXPLOT ====================
+            st.markdown("### 📊 Boxplot de Outliers")
+            chart_box = alt.Chart(df_filtrado).mark_boxplot(extent="min-max").encode(
+                x="Tipo:N", y="Valor:Q", color="Tipo:N"
             )
-        else:
-            st.info("Nenhum valor disponível para análise estatística.")
+            st.altair_chart(chart_box, use_container_width=True)
 
+            # ==================== CORRELAÇÃO ENTRE VARIÁVEIS ====================
+            st.markdown("### 🔗 Correlação entre Variáveis")
+            df_filtrado["Receita"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Receita" else 0.0, axis=1)
+            df_filtrado["Despesa"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" else 0.0, axis=1)
+            df_filtrado["Transferência"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Transferência" else 0.0, axis=1)
+            df_filtrado["Cartão"] = df_filtrado.apply(lambda r: r["Valor"] if (r["Tipo"]=="Despesa" and r["Conta"] in st.session_state.cartoes["Nome"].tolist()) else 0.0, axis=1)
+
+            corr_matrix = df_filtrado[["Receita","Despesa","Transferência","Cartão"]].corr()
+            st.dataframe(corr_matrix, use_container_width=True)
+
+            corr_df = corr_matrix.reset_index().melt(id_vars="index")
+            corr_df.columns = ["Var1","Var2","Correlação"]
+            chart_corr = alt.Chart(corr_df).mark_rect().encode(
+                x="Var1:N", y="Var2:N",
+                color=alt.Color("Correlação:Q", scale=alt.Scale(scheme="redblue", domain=(-1,1))),
+                tooltip=["Var1","Var2", alt.Tooltip("Correlação:Q", format=".2f")]
+            )
+            st.altair_chart(chart_corr, use_container_width=True)
+
+            # ==================== CORRELAÇÃO ENTRE CATEGORIAS ====================
+            st.markdown("### 🔗 Correlação entre Categorias")
+            df_filtrado["AnoMes"] = df_filtrado["Data"].dt.to_period("M").astype(str)
+            df_cat_pivot = df_filtrado.pivot_table(index="AnoMes", columns="Categoria", values="Valor", aggfunc="sum", fill_value=0.0)
+            if not df_cat_pivot.empty and len(df_cat_pivot.columns) > 1:
+                corr_cat_matrix = df_cat_pivot.corr()
+                st.dataframe(corr_cat_matrix, use_container_width=True)
+
+                corr_cat_df = corr_cat_matrix.reset_index().melt(id_vars="index")
+                corr_cat_df.columns = ["Categoria1","Categoria2","Correlação"]
+                chart_corr_cat = alt.Chart(corr_cat_df).mark_rect().encode(
+                    x="Categoria1:N", y="Categoria2:N",
+                    color=alt.Color("Correlação:Q", scale=alt.Scale(scheme="redblue", domain=(-1,1))),
+                    tooltip=["Categoria1","Categoria2", alt.Tooltip("Correlação:Q", format=".2f")]
+                ).properties(height=500)
+                st.altair_chart(chart_corr_cat, use_container_width=True)
+
+                # Resumo executivo
+                st.markdown("### 📌 Resumo Executivo das Correlações Mais Fortes")
+                corr_cat_pairs = corr_cat_matrix.unstack().reset_index()
+                corr_cat_pairs.columns
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
     st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
