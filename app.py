@@ -1409,6 +1409,90 @@ elif aba == "Statistical Indicators":
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
 
+if aba == "Statistical 2":
+    st.subheader("📊 Statistical 2 - Distribuição Normal")
+    st.markdown("Curva de sino com área sombreada e tabela resumo de probabilidades.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+
+        # Filtros
+        status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
+        tipo_sel = st.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist())
+        data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date())
+        data_fim = st.date_input("📅 Data Final", df["Data"].max().date())
+
+        df_filtrado = df[
+            (df["Data"].dt.date >= data_ini) &
+            (df["Data"].dt.date <= data_fim) &
+            (df["Tipo"].isin(tipo_sel))
+        ]
+        if status_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        valores = df_filtrado["Valor"].values
+        if len(valores) > 0:
+            media = np.mean(valores)
+            desvio = np.std(valores)
+
+            st.write(f"📌 Média: {media:.2f}, Desvio Padrão: {desvio:.2f}")
+
+            # Curva normal
+            x = np.linspace(media - 3*desvio, media + 3*desvio, 300)
+            y = norm.pdf(x, media, desvio)
+            df_curve = pd.DataFrame({"x": x, "y": y})
+
+            # Valor escolhido
+            valor_input = st.number_input("Digite um valor para calcular probabilidade", value=float(media))
+            prob_real = norm.cdf(valor_input, media, desvio)
+            st.write(f"🔮 Probabilidade de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
+
+            # Área sombreada até o valor escolhido
+            df_shade = df_curve[df_curve["x"] <= valor_input]
+
+            chart_curve = alt.Chart(df_curve).mark_line(color="#2a9d8f", strokeWidth=3).encode(
+                x=alt.X("x", title="Valor"),
+                y=alt.Y("y", title="Densidade"),
+                tooltip=["x", "y"]
+            )
+
+            chart_shade = alt.Chart(df_shade).mark_area(color="#e76f51", opacity=0.4).encode(
+                x="x",
+                y="y"
+            )
+
+            # Linhas de referência (média e desvios)
+            ref_points = [media, media+0.5*desvio, media-0.5*desvio, media+desvio, media-desvio]
+            df_refs = pd.DataFrame({"x": ref_points})
+            refs = alt.Chart(df_refs).mark_rule(color="#264653", strokeDash=[5,5]).encode(x="x")
+
+            st.altair_chart(chart_curve + chart_shade + refs, use_container_width=True)
+
+            # 🔹 Tabela resumo de probabilidades
+            prob_table = []
+            for p in ref_points:
+                prob_table.append({
+                    "Referência": f"{p:.2f}",
+                    "Probabilidade ≤": f"{norm.cdf(p, media, desvio):.2%}"
+                })
+            df_prob = pd.DataFrame(prob_table)
+
+            st.markdown("### 📋 Tabela Resumo de Probabilidades")
+            st.dataframe(df_prob, use_container_width=True)
+
+            # 🔹 Exportação CSV
+            csv_export = df_prob.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Baixar Tabela Resumo (CSV)",
+                data=csv_export,
+                file_name=f"statistical2_resumo_{datetime.today().strftime('%Y-%m-%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Nenhum valor disponível para análise estatística.")
+
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
     st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
