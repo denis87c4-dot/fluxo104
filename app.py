@@ -1410,14 +1410,44 @@ elif aba == "Statistical Indicators":
 
 if aba == "Statistical 2":
     st.subheader("📊 Statistical 2 - Distribuição Normal")
-    st.markdown("Curva de sino com área sombreada e tabela resumo de probabilidades.")
+    st.markdown("Curva de sino com área sombreada e tabela resumo de probabilidades + Totais mensais.")
 
     df = st.session_state.lancamentos
     if not df.empty:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
 
-        # Filtros
+        # 🔑 Agrupamento por mês e tipo
+        df_grouped = df.groupby(["AnoMes", "Tipo"])["Valor"].sum().reset_index()
+
+        # Pivot para Receita e Despesa lado a lado
+        pivot = df_grouped.pivot_table(
+            index="AnoMes",
+            columns="Tipo",
+            values="Valor",
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        # Criar Cash Flow (Receita - Despesa)
+        pivot["Cash Flow"] = pivot.get("Receita", 0) - pivot.get("Despesa", 0)
+
+        # Gráfico extra com Receita, Despesa e Cash Flow
+        df_melt = pivot.melt(id_vars="AnoMes", value_vars=["Receita", "Despesa", "Cash Flow"],
+                             var_name="Métrica", value_name="Valor")
+
+        chart_totais = alt.Chart(df_melt).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X("AnoMes:N", title="Mês/Ano"),
+            y=alt.Y("Valor:Q", title="Total (R$)"),
+            color=alt.Color("Métrica:N", title="Indicador"),
+            tooltip=["AnoMes", "Métrica", "Valor"]
+        ).properties(height=380).interactive()
+
+        st.markdown("### 📈 Totais Mensais (Receita, Despesa e Cash Flow)")
+        st.altair_chart(chart_totais, use_container_width=True)
+
+        # 🔹 Filtros e curva normal (mantive seu código original)
         status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
         tipo_sel = st.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist())
         data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date())
@@ -1438,8 +1468,8 @@ if aba == "Statistical 2":
 
             st.write(f"📌 Média: {media:.2f} | Desvio Padrão: {desvio:.2f}")
 
-            # Curva normal aproximada por formula matemática pura com numpy
-            x = np.linspace(media - 3*desvio if desvio > 0 else media - 1, media + 3*desvio if desvio > 0 else media + 1, 300)
+            x = np.linspace(media - 3*desvio if desvio > 0 else media - 1,
+                            media + 3*desvio if desvio > 0 else media + 1, 300)
             if desvio > 0:
                 y = (1 / (desvio * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - media) / desvio) ** 2)
             else:
@@ -1447,10 +1477,8 @@ if aba == "Statistical 2":
 
             df_curve = pd.DataFrame({"x": x, "y": y})
 
-            # Valor escolhido pelo usuário
             valor_input = st.number_input("Digite um valor para calcular probabilidade", value=float(media))
-            
-            # Cálculo de probabilidade acumulada aproximada usando função de erro do numpy/math
+
             import math
             def normal_cdf(val, m, s):
                 if s == 0:
@@ -1460,7 +1488,6 @@ if aba == "Statistical 2":
             prob_real = normal_cdf(valor_input, media, desvio)
             st.write(f"🔮 Probabilidade estimada de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
 
-            # Área sombreada até o valor escolhido
             df_shade = df_curve[df_curve["x"] <= valor_input]
 
             chart_curve = alt.Chart(df_curve).mark_line(color="#2a9d8f", strokeWidth=3).encode(
@@ -1480,7 +1507,6 @@ if aba == "Statistical 2":
 
             st.altair_chart(chart_curve + chart_shade + refs, use_container_width=True)
 
-            # 🔹 Tabela resumo de probabilidades
             prob_table = []
             for p in ref_points:
                 prob_table.append({
@@ -1501,7 +1527,6 @@ if aba == "Statistical 2":
             )
         else:
             st.info("Nenhum valor disponível para análise estatística.")
-
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
     st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
