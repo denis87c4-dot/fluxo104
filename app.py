@@ -81,7 +81,7 @@ def aplicar_estilo_tabela(df_styled, subset=None):
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", [
     "Dashboard", "Dashboard 3", "Resumo Geral", "Projections & Charts", "Monthly Audit 3", "Monthly Audit",
-    "Financial Indicators", "Statistical Indicators", "Statistical Analysis", "Cadastro (Form)",
+    "Financial Indicators", "Statistical Indicators", "Cadastro (Form)",
     "Lançamentos", "Cartões", "Gerenciar Categorias"
 ])
 
@@ -1406,127 +1406,6 @@ elif aba == "Statistical Indicators":
         st.altair_chart(chart_burn, use_container_width=True)
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
-
-elif aba == "Statistical Analysis":
-    st.subheader("📊 Statistical Analysis - Distribuição Normal Avançada")
-    st.markdown("Ferramenta interativa baseada na função **NORM.DIST** do Excel, com filtros poderosos, comparação de distribuições e métricas de divergência.")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-
-        # ==================== FILTROS PODEROSOS ====================
-        with st.expander("🔍 Filtros Estatísticos", expanded=True):
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"], key="statA_status")
-            with col_f2:
-                tipo_sel = st.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist(), key="statA_tipo")
-            with col_f3:
-                data_inicio = st.date_input("📅 Data Inicial", df["Data"].min().date(), key="statA_ini")
-                data_fim = st.date_input("📅 Data Final", df["Data"].max().date(), key="statA_fim")
-
-        df_filtrado = df[
-            (df["Data"].dt.date >= data_inicio) &
-            (df["Data"].dt.date <= data_fim) &
-            (df["Tipo"].isin(tipo_sel))
-        ]
-        if status_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
-
-        if not df_filtrado.empty:
-            media = df_filtrado["Valor"].mean()
-            desvio = df_filtrado["Valor"].std()
-
-            st.markdown(f"**Média calculada:** {media:.2f} | **Desvio Padrão:** {desvio:.2f}")
-
-            # Segunda distribuição para comparação
-            st.markdown("### ⚖️ Comparar com outra distribuição")
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                media2 = st.number_input("📌 Média da 2ª distribuição", value=media, step=0.1)
-            with col_c2:
-                desvio2 = st.number_input("📌 Desvio Padrão da 2ª distribuição", value=desvio, step=0.1)
-
-            # Input para valor X
-            x_input = st.number_input("🔍 Digite um valor X", value=1.0, step=0.1)
-            probabilidade = norm.cdf(x_input, loc=media, scale=desvio)
-            probabilidade2 = norm.cdf(x_input, loc=media2, scale=desvio2)
-
-            st.metric("📉 Probabilidade acumulada (Dist 1)", f"{probabilidade:.2%}", delta="P(X ≤ valor)")
-            st.metric("📉 Probabilidade acumulada (Dist 2)", f"{probabilidade2:.2%}", delta="P(X ≤ valor)")
-
-            # Gráficos comparativos
-            x_vals = np.linspace(min(media, media2) - 4*max(desvio, desvio2),
-                                 max(media, media2) + 4*max(desvio, desvio2), 300)
-            pdf1 = norm.pdf(x_vals, loc=media, scale=desvio)
-            pdf2 = norm.pdf(x_vals, loc=media2, scale=desvio2)
-
-            df_curve1 = pd.DataFrame({"x": x_vals, "PDF": pdf1, "Distribuição": "Dist 1"})
-            df_curve2 = pd.DataFrame({"x": x_vals, "PDF": pdf2, "Distribuição": "Dist 2"})
-            df_curves = pd.concat([df_curve1, df_curve2])
-
-            chart_curves = alt.Chart(df_curves).mark_line(strokeWidth=3).encode(
-                x=alt.X("x", title="Valor X"),
-                y=alt.Y("PDF", title="Densidade"),
-                color="Distribuição",
-                tooltip=["x", "PDF", "Distribuição"]
-            )
-
-            # Sobreposição de áreas
-            df_diff = pd.DataFrame({"x": x_vals, "Diferença": np.abs(pdf1 - pdf2)})
-            chart_diff = alt.Chart(df_diff).mark_area(color="#9b5de5", opacity=0.3).encode(
-                x="x",
-                y="Diferença"
-            )
-
-            # Histograma dos valores filtrados
-            hist = alt.Chart(df_filtrado).mark_bar(color="#f4a261", opacity=0.6).encode(
-                x=alt.X("Valor", bin=alt.Bin(maxbins=30), title="Valor"),
-                y=alt.Y("count()", title="Frequência"),
-                tooltip=["count()"]
-            )
-
-            # CDF acumulada dos dados reais
-            df_cdf = df_filtrado[["Valor"]].copy().sort_values("Valor")
-            df_cdf["CDF"] = np.arange(1, len(df_cdf)+1) / len(df_cdf)
-            chart_cdf = alt.Chart(df_cdf).mark_line(color="#e76f51", strokeWidth=3).encode(
-                x=alt.X("Valor", title="Valor"),
-                y=alt.Y("CDF", title="Probabilidade acumulada"),
-                tooltip=["Valor", "CDF"]
-            )
-
-            st.markdown("### 📈 Comparação: Dados Reais vs Duas Distribuições + CDF + Diferença")
-            st.altair_chart(hist + chart_curves + chart_diff + chart_cdf, use_container_width=True)
-
-            # Métricas de divergência
-            kl_div = entropy(pdf1, pdf2)
-            bhattacharyya = -np.log(np.sum(np.sqrt(pdf1 * pdf2)) * (x_vals[1] - x_vals[0]))
-            st.markdown("### 📊 Métricas de Divergência Estatística")
-            st.metric("🔀 KL Divergence", f"{kl_div:.4f}", delta="Medida de diferença relativa")
-            st.metric("🔀 Distância de Bhattacharyya", f"{bhattacharyya:.4f}", delta="Medida de sobreposição")
-
-            # Exportação para CSV
-            st.markdown("### 📥 Exportar Dados e Cálculos")
-            df_export = df_filtrado.copy()
-            df_export["PDF_Dist1"] = norm.pdf(df_export["Valor"], loc=media, scale=desvio)
-            df_export["CDF_Dist1"] = norm.cdf(df_export["Valor"], loc=media, scale=desvio)
-            df_export["PDF_Dist2"] = norm.pdf(df_export["Valor"], loc=media2, scale=desvio2)
-            df_export["CDF_Dist2"] = norm.cdf(df_export["Valor"], loc=media2, scale=desvio2)
-            df_export["Diferença_PDF"] = np.abs(df_export["PDF_Dist1"] - df_export["PDF_Dist2"])
-
-            csv_export = df_export.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Dados Estatísticos (CSV)",
-                data=csv_export,
-                file_name=f"statistical_analysis_{datetime.today().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
-    else:
-        st.info("Nenhum lançamento disponível para análise estatística.")
 
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
