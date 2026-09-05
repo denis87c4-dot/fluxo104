@@ -1451,8 +1451,8 @@ elif aba == "Statistical Analysis":
 
             # Input para valor X
             x_input = st.number_input("🔍 Digite um valor X", value=1.0, step=0.1)
-            probabilidade = norm.cdf(x_input, media, desvio)
-            probabilidade2 = norm.cdf(x_input, media2, desvio2)
+            probabilidade = norm.cdf(x_input, loc=media, scale=desvio)
+            probabilidade2 = norm.cdf(x_input, loc=media2, scale=desvio2)
 
             st.metric("📉 Probabilidade acumulada (Dist 1)", f"{probabilidade:.2%}", delta="P(X ≤ valor)")
             st.metric("📉 Probabilidade acumulada (Dist 2)", f"{probabilidade2:.2%}", delta="P(X ≤ valor)")
@@ -1460,8 +1460,8 @@ elif aba == "Statistical Analysis":
             # Gráficos comparativos
             x_vals = np.linspace(min(media, media2) - 4*max(desvio, desvio2),
                                  max(media, media2) + 4*max(desvio, desvio2), 300)
-            pdf1 = norm.pdf(x_vals, media, desvio)
-            pdf2 = norm.pdf(x_vals, media2, desvio2)
+            pdf1 = norm.pdf(x_vals, loc=media, scale=desvio)
+            pdf2 = norm.pdf(x_vals, loc=media2, scale=desvio2)
 
             df_curve1 = pd.DataFrame({"x": x_vals, "PDF": pdf1, "Distribuição": "Dist 1"})
             df_curve2 = pd.DataFrame({"x": x_vals, "PDF": pdf2, "Distribuição": "Dist 2"})
@@ -1510,10 +1510,10 @@ elif aba == "Statistical Analysis":
             # Exportação para CSV
             st.markdown("### 📥 Exportar Dados e Cálculos")
             df_export = df_filtrado.copy()
-            df_export["PDF_Dist1"] = norm.pdf(df_export["Valor"], media, desvio)
-            df_export["CDF_Dist1"] = norm.cdf(df_export["Valor"], media, desvio)
-            df_export["PDF_Dist2"] = norm.pdf(df_export["Valor"], media2, desvio2)
-            df_export["CDF_Dist2"] = norm.cdf(df_export["Valor"], media2, desvio2)
+            df_export["PDF_Dist1"] = norm.pdf(df_export["Valor"], loc=media, scale=desvio)
+            df_export["CDF_Dist1"] = norm.cdf(df_export["Valor"], loc=media, scale=desvio)
+            df_export["PDF_Dist2"] = norm.pdf(df_export["Valor"], loc=media2, scale=desvio2)
+            df_export["CDF_Dist2"] = norm.cdf(df_export["Valor"], loc=media2, scale=desvio2)
             df_export["Diferença_PDF"] = np.abs(df_export["PDF_Dist1"] - df_export["PDF_Dist2"])
 
             csv_export = df_export.to_csv(index=False).encode("utf-8")
@@ -1527,7 +1527,7 @@ elif aba == "Statistical Analysis":
             st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
     else:
         st.info("Nenhum lançamento disponível para análise estatística.")
-        
+
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
     st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
