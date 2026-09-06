@@ -1408,125 +1408,106 @@ elif aba == "Statistical Indicators":
     else:
         st.info("Nenhum lançamento cadastrado para estatísticas.")
 
-if aba == "Statistical 2":
-    st.subheader("📊 Statistical 2 - Distribuição Normal")
-    st.markdown("Curva de sino com área sombreada e tabela resumo de probabilidades + Totais mensais.")
+elif aba == "Statistical 2":
+    st.subheader("📊 Statistic 2 - Análise Estatística Avançada")
 
     df = st.session_state.lancamentos
     if not df.empty:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+
+        # Criar colunas de períodos
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+        df["Trimestre"] = df["Data"].dt.to_period("Q").astype(str)
+        df["Quadrimestre"] = ((df["Data"].dt.month - 1) // 4 + 1).astype(str) + "-" + df["Data"].dt.year.astype(str)
+        df["Semestre"] = ((df["Data"].dt.month - 1) // 6 + 1).astype(str) + "-" + df["Data"].dt.year.astype(str)
 
-        # 🔑 Agrupamento por mês e tipo
-        df_grouped = df.groupby(["AnoMes", "Tipo"])["Valor"].sum().reset_index()
-
-        # Pivot para Receita e Despesa lado a lado
-        pivot = df_grouped.pivot_table(
-            index="AnoMes",
-            columns="Tipo",
-            values="Valor",
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
-
-        # Criar Cash Flow (Receita - Despesa)
-        pivot["Cash Flow"] = pivot.get("Receita", 0) - pivot.get("Despesa", 0)
-
-        # Gráfico extra com Receita, Despesa e Cash Flow
-        df_melt = pivot.melt(id_vars="AnoMes", value_vars=["Receita", "Despesa", "Cash Flow"],
-                             var_name="Métrica", value_name="Valor")
-
-        chart_totais = alt.Chart(df_melt).mark_line(strokeWidth=3, point=True).encode(
-            x=alt.X("AnoMes:N", title="Mês/Ano"),
-            y=alt.Y("Valor:Q", title="Total (R$)"),
-            color=alt.Color("Métrica:N", title="Indicador"),
-            tooltip=["AnoMes", "Métrica", "Valor"]
-        ).properties(height=380).interactive()
-
-        st.markdown("### 📈 Totais Mensais (Receita, Despesa e Cash Flow)")
-        st.altair_chart(chart_totais, use_container_width=True)
-
-        # 🔹 Filtros e curva normal (mantive seu código original)
-        status_sel = st.selectbox("📌 Status", ["Todos", "Efetivado", "Budget"])
-        tipo_sel = st.multiselect("📂 Tipo", df["Tipo"].unique().tolist(), default=df["Tipo"].unique().tolist())
-        data_ini = st.date_input("📅 Data Inicial", df["Data"].min().date())
-        data_fim = st.date_input("📅 Data Final", df["Data"].max().date())
-
-        df_filtrado = df[
-            (df["Data"].dt.date >= data_ini) &
-            (df["Data"].dt.date <= data_fim) &
-            (df["Tipo"].isin(tipo_sel))
-        ]
-        if status_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
-
-        valores = df_filtrado["Valor"].values
-        if len(valores) > 0:
-            media = np.mean(valores)
-            desvio = np.std(valores)
-
-            st.write(f"📌 Média: {media:.2f} | Desvio Padrão: {desvio:.2f}")
-
-            x = np.linspace(media - 3*desvio if desvio > 0 else media - 1,
-                            media + 3*desvio if desvio > 0 else media + 1, 300)
-            if desvio > 0:
-                y = (1 / (desvio * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - media) / desvio) ** 2)
-            else:
-                y = np.zeros_like(x)
-
-            df_curve = pd.DataFrame({"x": x, "y": y})
-
-            valor_input = st.number_input("Digite um valor para calcular probabilidade", value=float(media))
-
-            import math
-            def normal_cdf(val, m, s):
-                if s == 0:
-                    return 1.0 if val >= m else 0.0
-                return 0.5 * (1 + math.erf((val - m) / (s * math.sqrt(2))))
-
-            prob_real = normal_cdf(valor_input, media, desvio)
-            st.write(f"🔮 Probabilidade estimada de ser ≤ {valor_input:.2f}: {prob_real:.2%}")
-
-            df_shade = df_curve[df_curve["x"] <= valor_input]
-
-            chart_curve = alt.Chart(df_curve).mark_line(color="#2a9d8f", strokeWidth=3).encode(
-                x=alt.X("x", title="Valor"),
-                y=alt.Y("y", title="Densidade"),
-                tooltip=["x", "y"]
-            )
-
-            chart_shade = alt.Chart(df_shade).mark_area(color="#e76f51", opacity=0.4).encode(
-                x="x",
-                y="y"
-            )
-
-            ref_points = [media, media+0.5*desvio, media-0.5*desvio, media+desvio, media-desvio]
-            df_refs = pd.DataFrame({"x": ref_points})
-            refs = alt.Chart(df_refs).mark_rule(color="#264653", strokeDash=[5,5]).encode(x="x")
-
-            st.altair_chart(chart_curve + chart_shade + refs, use_container_width=True)
-
-            prob_table = []
-            for p in ref_points:
-                prob_table.append({
-                    "Referência": f"{p:.2f}",
-                    "Probabilidade ≤": f"{normal_cdf(p, media, desvio):.2%}"
-                })
-            df_prob = pd.DataFrame(prob_table)
-
-            st.markdown("### 📋 Tabela Resumo de Probabilidades")
-            st.dataframe(df_prob, use_container_width=True)
-
-            csv_export = df_prob.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar Tabela Resumo (CSV)",
-                data=csv_export,
-                file_name=f"statistical2_resumo_{datetime.today().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
-            )
+        # Escolha do tipo de período
+        periodo_tipo = st.selectbox("📅 Tipo de Período", ["Mensal", "Trimestral", "Quadrimestral", "Semestral"])
+        if periodo_tipo == "Mensal":
+            col_periodo = "AnoMes"
+        elif periodo_tipo == "Trimestral":
+            col_periodo = "Trimestre"
+        elif periodo_tipo == "Quadrimestral":
+            col_periodo = "Quadrimestre"
         else:
-            st.info("Nenhum valor disponível para análise estatística.")
+            col_periodo = "Semestre"
+
+        # Agrupar por período e somar
+        df_grouped = df.groupby(col_periodo)["Valor"].sum().reset_index()
+
+        # Calcular Norm. Dist sobre o somatório
+        media = df_grouped["Valor"].mean()
+        desvio = df_grouped["Valor"].std()
+        df_grouped["NormDist"] = (df_grouped["Valor"] - media) / desvio
+
+        # ==================== Gráfico de Sino (Distribuição Normal) ====================
+        st.markdown("### 🔔 Distribuição Normal (Bell Curve)")
+        x_vals = np.linspace(df_grouped["Valor"].min(), df_grouped["Valor"].max(), 200)
+        y_vals = (1/(desvio*np.sqrt(2*np.pi))) * np.exp(-0.5*((x_vals-media)/desvio)**2)
+        df_norm = pd.DataFrame({"Valor": x_vals, "Densidade": y_vals})
+        chart_norm = alt.Chart(df_norm).mark_line(color="#264653", strokeWidth=3).encode(
+            x=alt.X("Valor:Q", title="Total por Período"),
+            y=alt.Y("Densidade:Q", title="Densidade Normal"),
+            tooltip=["Valor", "Densidade"]
+        ).properties(height=300).interactive()
+        st.altair_chart(chart_norm, use_container_width=True)
+
+        # ==================== Projeções ====================
+        proj_tipo = st.selectbox("📈 Tipo de Projeção", ["Linear", "Polinomial", "ARIMA"])
+
+        if proj_tipo == "Linear":
+            x = np.arange(len(df_grouped))
+            y = df_grouped["Valor"].values
+            coef = np.polyfit(x, y, 1)
+            df_grouped["Projection"] = coef[0] * x + coef[1]
+
+        elif proj_tipo == "Polinomial":
+            x = np.arange(len(df_grouped))
+            y = df_grouped["Valor"].values
+            coef_poly = np.polyfit(x, y, 2)
+            df_grouped["Projection"] = coef_poly[0]*x**2 + coef_poly[1]*x + coef_poly[2]
+
+        else:  # ARIMA
+            y = df_grouped["Valor"].values
+            steps_forecast = st.slider("🔮 Quantos períodos futuros prever (ARIMA)?", 
+                                       min_value=1, max_value=12, value=3, step=1)
+            try:
+                from statsmodels.tsa.arima.model import ARIMA
+                model = ARIMA(y, order=(1,1,1))
+                model_fit = model.fit()
+                forecast = model_fit.forecast(steps=steps_forecast)
+                df_forecast = pd.DataFrame({
+                    col_periodo: [f"Proj_{i+1}" for i in range(len(forecast))],
+                    "Valor": forecast,
+                    "Projection": forecast
+                })
+                df_grouped = pd.concat([df_grouped, df_forecast], ignore_index=True)
+            except Exception as e:
+                st.warning(f"⚠️ ARIMA não pôde ser calculado: {e}")
+                df_grouped["Projection"] = np.nan
+
+        # Mostrar tabela
+        st.dataframe(df_grouped, use_container_width=True)
+
+        # Gráfico comparativo
+        st.markdown("### 📈 Comparativo Valores, NormDist e Projeção")
+        df_melt = df_grouped.melt(id_vars=col_periodo, 
+                                  value_vars=["Valor", "NormDist", "Projection"],
+                                  var_name="Métrica", value_name="ValorCalc")
+        chart = alt.Chart(df_melt).mark_line(strokeWidth=3, point=True).encode(
+            x=alt.X(f"{col_periodo}:N", title=periodo_tipo),
+            y=alt.Y("ValorCalc:Q", title="Montante / Índice"),
+            color=alt.Color("Métrica:N", 
+                            scale=alt.Scale(domain=["Valor", "NormDist", "Projection"],
+                                            range=["#2a9d8f", "#e76f51", "#264653"])),
+            tooltip=[col_periodo, "Métrica", "ValorCalc"]
+        ).properties(height=400).interactive()
+        st.altair_chart(chart, use_container_width=True)
+
+    else:
+        st.info("Nenhum lançamento disponível para análise estatística.")
+
 elif aba == "Statistical 3":
     st.subheader("📊 Statistical 3 - KPIs Avançados com Projeções e Estatísticas")
     st.markdown("Painel estatístico com filtros dinâmicos, tendências, cenários futuros, volatilidade e métricas estatísticas robustas.")
