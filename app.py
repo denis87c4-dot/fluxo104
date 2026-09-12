@@ -36,6 +36,26 @@ if os.path.exists(ARQUIVO_CARTOES):
 else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
+# ==================== FUNÇÕES DE BACKUP ====================
+def salvar_backup():
+    try:
+        st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+        st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+        st.success("💾 Backup realizado com sucesso!")
+    except Exception as e:
+        st.error(f"Erro ao salvar backup: {e}")
+
+def salvar_backup_automatico():
+    try:
+        st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+        st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
+        pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
+    except:
+        pass
+
+salvar_backup_automatico()
+
 # ==================== CENTRAL DE BACKUP & SEGURANÇA ====================
 st.sidebar.markdown("## 🔐 Central de Backup & Segurança")
 
@@ -110,7 +130,6 @@ if arquivo_upload_app is not None:
             st.rerun()
     except Exception as e:
         st.sidebar.error(f"Erro ao restaurar versão completa: {e}")
-
 # ==================== FUNÇÃO DE ESTILO ====================
 def colorir_negativos(val):
     if isinstance(val, str) and "R$" in val:
