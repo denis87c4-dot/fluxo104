@@ -52,84 +52,10 @@ def salvar_backup_automatico():
         st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
         pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
     except:
-        pass
+        pass  # silencioso
 
 salvar_backup_automatico()
 
-# ==================== CENTRAL DE BACKUP & SEGURANÇA ====================
-st.sidebar.markdown("## 🔐 Central de Backup & Segurança")
-
-# --- Seção 1: Backup de Dados ---
-st.sidebar.markdown("### 📂 Backup de Dados")
-
-if st.sidebar.button("💾 Salvar Backup Local"):
-    salvar_backup()
-
-arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
-arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
-if arquivos_existentes:
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for arq in arquivos_existentes:
-            zip_file.write(arq)
-    zip_buffer.seek(0)
-    st.sidebar.download_button(
-        label="📥 Baixar Backup de Dados (.zip)",
-        data=zip_buffer,
-        file_name=f"backup_fluxo104_dados_{datetime.today().strftime('%Y-%m-%d')}.zip",
-        mime="application/zip"
-    )
-
-st.sidebar.markdown("#### 🔄 Restaurar Dados")
-arquivo_upload = st.sidebar.file_uploader("Envie seu backup de dados (.zip)", type="zip")
-if arquivo_upload is not None:
-    try:
-        with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
-            zip_ref.extractall(".")
-        st.sidebar.success("✅ Dados restaurados com sucesso! Recarregue o app.")
-        if st.sidebar.button("🔄 Recarregar App"):
-            st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"Erro ao restaurar dados: {e}")
-
-st.sidebar.markdown("---")
-
-# --- Seção 2: Backup Completo (App + Dados) ---
-st.sidebar.markdown("### 📦 Backup Completo (App + Dados)")
-
-if st.sidebar.button("💾 Salvar Backup Completo"):
-    try:
-        arquivos_app = ["import_streamlit_as.py", "requirements.txt"]  # ajuste para o nome real do seu arquivo principal
-        arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS] + arquivos_app
-        arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
-
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for arq in arquivos_existentes:
-                zip_file.write(arq)
-        zip_buffer.seek(0)
-
-        st.sidebar.download_button(
-            label="📥 Baixar Backup Completo (App + Dados)",
-            data=zip_buffer,
-            file_name=f"backup_fluxo104_app_{datetime.today().strftime('%Y-%m-%d')}.zip",
-            mime="application/zip"
-        )
-        st.sidebar.success("✅ Backup completo gerado com sucesso!")
-    except Exception as e:
-        st.sidebar.error(f"Erro ao gerar backup completo: {e}")
-
-st.sidebar.markdown("#### 🔄 Restaurar Versão Completa")
-arquivo_upload_app = st.sidebar.file_uploader("Envie seu backup completo (.zip)", type="zip")
-if arquivo_upload_app is not None:
-    try:
-        with zipfile.ZipFile(arquivo_upload_app, "r") as zip_ref:
-            zip_ref.extractall(".")
-        st.sidebar.success("✅ Versão completa restaurada! Recarregue o app.")
-        if st.sidebar.button("🔄 Recarregar App"):
-            st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"Erro ao restaurar versão completa: {e}")
 # ==================== FUNÇÃO DE ESTILO ====================
 def colorir_negativos(val):
     if isinstance(val, str) and "R$" in val:
