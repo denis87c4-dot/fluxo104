@@ -131,8 +131,7 @@ if aba == "Dashboard":
     
     df = st.session_state.lancamentos
     
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+            df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
         df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
         
@@ -144,7 +143,7 @@ if aba == "Dashboard":
         col_f1, col_f2 = st.columns([2, 4])
         with col_f1:
             mes_selecionado = st.selectbox("📅 Período de Análise (Mês/Ano)", meses_disponiveis, index=0)
-        
+
         ano_sel, mes_sel = map(int, mes_selecionado.split("-"))
         
         dt_sel = datetime(ano_sel, mes_sel, 1)
