@@ -103,8 +103,8 @@ elif aba == "Cadastro":
 
                     data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
                     registros.append([
-                        tipo,status,descricao,categoria,conta,conta_destino,
-                        valor_parcela,data_parcela,f"{i+1}/{num_parcelas}",regra_parcelamento,forma_pagamento,observacoes
+                        tipo, status, descricao, categoria, conta, conta_destino,
+                        float(valor_parcela), data_parcela.strftime("%Y-%m-%d"), f"{i+1}/{num_parcelas}", regra_parcelamento, forma_pagamento, observacoes
                     ])
 
                 novo = pd.DataFrame(registros, columns=st.session_state.lancamentos.columns)
@@ -184,7 +184,6 @@ elif aba == "Financial Summary":
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
-        # ✅ Linha corrigida
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        # Final table
+        st.dataframe(pivot, use_container_width=True)
