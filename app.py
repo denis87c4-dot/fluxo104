@@ -185,4 +185,7 @@ elif aba == "Financial Summary":
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
         # ✅ Linha corrigida
-        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m
+        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
+
+        # Final table
+        pivot_fmt = pivot[["Month","Income","Expense","Cash Flow
