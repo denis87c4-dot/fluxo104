@@ -48,7 +48,7 @@ def salvar_backup_automatico():
 salvar_backup_automatico()
 
 # ==================== NAVEGAÇÃO ====================
-aba = st.sidebar.radio("Navegação", ["Lançamentos","Cadastro","Cartões","Backup"])
+aba = st.sidebar.radio("Navegação", ["Lançamentos","Cadastro","Cartões","Backup","Financial Summary"])
 
 # ==================== LANÇAMENTOS ====================
 if aba == "Lançamentos":
@@ -133,3 +133,50 @@ elif aba == "Backup":
                 st.rerun()
         except Exception as e:
             st.error(f"Erro ao restaurar arquivo: {e}")
+
+# ==================== FINANCIAL SUMMARY ====================
+elif aba == "Financial Summary":
+    st.subheader("📊 Financial Summary")
+    st.markdown("Consolidated view of **Income**, **Expenses (including cards)**, **Cash Flow**, and **Cumulative Balance**.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        # Filters
+        status_sel = st.selectbox("Filter by Status", ["All","Efetivado","Budget"])
+        start_date = st.date_input("Start Date", df["Data"].min().date())
+        end_date = st.date_input("End Date", df["Data"].max().date())
+
+        df_filtrado = df[(df["Data"].dt.date >= start_date) & (df["Data"].dt.date <= end_date)]
+        if status_sel != "All":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        # Consolidation
+        df_filtrado["Income"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Receita" else 0.0, axis=1)
+        df_filtrado["Expense"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"]=="Despesa" else 0.0, axis=1)
+
+        pivot = df_filtrado.pivot_table(
+            index="AnoMes",
+            values=["Income","Expense"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
+        pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
+        pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
+
+        # Format months like 09/2026
+        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
+
+        # Final table
+        pivot_fmt = pivot[["Month","Income","Expense","Cash Flow","Cumulative"]].copy()
+        for col in ["Income","Expense","Cash Flow","Cumulative"]:
+            pivot_fmt[col] = pivot_fmt[col].apply(lambda x: f"R$ {x:,.2f}")
+
+        st.dataframe(pivot_fmt.set_index("Month"), use_container_width=True)
+    else:
+        st.info("No records available for summary.")
