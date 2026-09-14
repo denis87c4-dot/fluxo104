@@ -17,7 +17,9 @@ ARQUIVO_CATEGORIAS = "categorias.csv"
 if os.path.exists(ARQUIVO_LANCAMENTOS):
     st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
 else:
-    st.session_state.lancamentos = pd.DataFrame(columns=["Tipo","Status","Descricao","Categoria","Conta","ContaDestino","Valor","Data","Parcela"])
+    st.session_state.lancamentos = pd.DataFrame(columns=[
+        "Tipo","Status","Descricao","Categoria","Conta","ContaDestino","Valor","Data","Parcela","RegraParcelamento"
+    ])
 
 if os.path.exists(ARQUIVO_CATEGORIAS):
     df_cat = pd.read_csv(ARQUIVO_CATEGORIAS)
@@ -65,14 +67,35 @@ elif aba == "Cadastro":
         conta_destino = st.text_input("Conta Destino")
         valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01)
         data = st.date_input("Data")
-        parcela = st.text_input("Parcela")
+        num_parcelas = st.number_input("Número de Parcelas", min_value=1, step=1, value=1)
+        
+        regra_parcelamento = st.selectbox(
+            "Forma de Parcelamento",
+            ["Replicar Integralmente", "Parcelado"]
+        )
+
         submit = st.form_submit_button("Salvar")
         if submit:
-            novo = pd.DataFrame([[tipo,status,descricao,categoria,conta,conta_destino,valor,data,parcela]],
-                                columns=st.session_state.lancamentos.columns)
+            registros = []
+            for i in range(num_parcelas):
+                if regra_parcelamento == "Parcelado":
+                    valor_parcela = valor / num_parcelas
+                else:
+                    valor_parcela = valor
+
+                data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
+                registros.append([
+                    tipo,status,descricao,categoria,conta,conta_destino,
+                    valor_parcela,data_parcela,f"{i+1}/{num_parcelas}",regra_parcelamento
+                ])
+
+            novo = pd.DataFrame(
+                registros,
+                columns=st.session_state.lancamentos.columns
+            )
             st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo], ignore_index=True)
             salvar_backup()
-            st.success("✅ Lançamento cadastrado!")
+            st.success(f"✅ {num_parcelas} lançamento(s) cadastrado(s) com sucesso!")
 
 # ==================== CARTÕES ====================
 elif aba == "Cartões":
@@ -100,4 +123,13 @@ elif aba == "Backup":
             mime="application/zip"
         )
 
-    st.file_uploader("📤 Restaurar Backup (ZIP)", type="zip")
+    arquivo_upload = st.file_uploader("📤 Restaurar Backup (ZIP)", type="zip")
+    if arquivo_upload is not None:
+        try:
+            with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
+                zip_ref.extractall(".")
+            st.success("✅ Dados restaurados com sucesso! Recarregue a página.")
+            if st.button("🔄 Recarregar App"):
+                st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao restaurar arquivo: {e}")
