@@ -18,7 +18,8 @@ if os.path.exists(ARQUIVO_LANCAMENTOS):
     st.session_state.lancamentos = pd.read_csv(ARQUIVO_LANCAMENTOS)
 else:
     st.session_state.lancamentos = pd.DataFrame(columns=[
-        "Tipo","Status","Descricao","Categoria","Conta","ContaDestino","Valor","Data","Parcela","RegraParcelamento","FormaPagamento","Observacoes"
+        "Tipo","Status","Descricao","Categoria","Conta","ContaDestino","Valor","Data","Parcela",
+        "RegraParcelamento","FormaPagamento","Observacoes"
     ])
 
 if os.path.exists(ARQUIVO_CATEGORIAS):
@@ -183,5 +184,5 @@ elif aba == "Financial Summary":
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
-        # Format months like 09/2026
-        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M
+        # ✅ Linha corrigida
+        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m
