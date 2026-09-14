@@ -62,7 +62,17 @@ elif aba == "Cadastro":
         tipo = st.selectbox("Tipo", ["Receita","Despesa","Transferência"])
         status = st.selectbox("Status", ["Efetivado","Budget"])
         descricao = st.text_input("Descrição")
+
+        # 🔽 Categoria com opção de adicionar nova
+        nova_categoria = st.text_input("Adicionar nova categoria (opcional)")
         categoria = st.selectbox("Categoria", st.session_state.categorias)
+        if nova_categoria:
+            if nova_categoria not in st.session_state.categorias:
+                st.session_state.categorias.append(nova_categoria)
+                salvar_backup()
+                st.success(f"✅ Nova categoria adicionada: {nova_categoria}")
+            categoria = nova_categoria
+
         conta = st.text_input("Conta")
         conta_destino = st.text_input("Conta Destino")
         valor = st.number_input("Valor (R$)", min_value=0.0, step=0.01)
