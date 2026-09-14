@@ -188,4 +188,3 @@ elif aba == "Financial Summary":
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
         # Final table
-        pivot_fmt = pivot[["Month","Income","Expense","Cash Flow
