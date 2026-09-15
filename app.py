@@ -61,12 +61,10 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        st.dataframe(
-            df_exibicao.style.format({"Valor": "R$ {:,.2f}".format}, locale="pt_BR"),
-            use_container_width=True
-        )
-    else:
-        st.dataframe(df_exibicao, use_container_width=True)
+        # Formatação direta para Real Brasileiro
+        df_exibicao["Valor"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    
+    st.dataframe(df_exibicao, use_container_width=True)
 
 # ==================== CADASTRO ====================
 elif aba == "Cadastro":
@@ -138,12 +136,9 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        st.dataframe(
-            df_cartoes_exib.style.format({"Limite": "R$ {:,.2f}".format}, locale="pt_BR"),
-            use_container_width=True
-        )
-    else:
-        st.dataframe(df_cartoes_exib, use_container_width=True)
+        df_cartoes_exib["Limite"] = df_cartoes_exib["Limite"].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    
+    st.dataframe(df_cartoes_exib, use_container_width=True)
 
 # ==================== BACKUP ====================
 elif aba == "Backup":
@@ -212,10 +207,8 @@ elif aba == "Financial Summary":
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        # Formatação das colunas financeiras na tabela resumo
-        colunas_financeiras = {"Income": "R$ {:,.2f}".format, "Expense": "R$ {:,.2f}".format, "Cash Flow": "R$ {:,.2f}".format, "Cumulative": "R$ {:,.2f}".format}
-        
-        st.dataframe(
-            pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].style.format(colunas_financeiras, locale="pt_BR"),
-            use_container_width=True
-        )
+        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].copy()
+        for col in ["Income", "Expense", "Cash Flow", "Cumulative"]:
+            pivot_exibicao[col] = pivot_exibicao[col].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+        st.dataframe(pivot_exibicao, use_container_width=True)
