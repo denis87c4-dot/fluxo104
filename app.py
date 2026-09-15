@@ -57,10 +57,11 @@ def formatar_moeda_br(val):
         return "R$ 0,00"
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# Função de estilo para deixar valores negativos em vermelho
+# Função de estilo para deixar valores estritamente menores que 0 em vermelho
 def colorir_negativos(val):
-    cor = 'color: red;' if isinstance(val, (int, float)) and val < 0 else ''
-    return cor
+    if isinstance(val, (int, float)) and val < 0:
+        return 'color: red; font-weight: bold;'
+    return ''
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
@@ -72,7 +73,6 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        # Se for despesa, podemos opcionalmente exibir como negativo ou manter o valor com formatação e cor condicional
         df_estilizado = df_exibicao.style.format({"Valor": formatar_moeda_br}).map(
             colorir_negativos, subset=["Valor"]
         )
@@ -219,6 +219,8 @@ elif aba == "Financial Summary":
         ).reset_index()
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
+        
+        # Garante o cálculo matemático correto: Receitas menos Despesas
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
@@ -228,7 +230,6 @@ elif aba == "Financial Summary":
         
         colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
         
-        # Aplicação da formatação em moeda e do destaque em vermelho para números negativos
         pivot_estilizado = pivot_exibicao.style.format(
             {col: formatar_moeda_br for col in colunas_financeiras}
         ).map(
