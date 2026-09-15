@@ -74,8 +74,7 @@ if aba == "Lançamentos":
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
         
-        # Mantém como número e aplica o Styler nativo do Streamlit
-        df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"])
+        df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
         st.dataframe(df_estilizado, use_container_width=True)
     else:
         st.dataframe(df_exibicao, use_container_width=True)
@@ -150,7 +149,7 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"])
+        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
         st.dataframe(df_cartoes_estilizado, use_container_width=True)
     else:
         st.dataframe(df_cartoes_exib, use_container_width=True)
@@ -182,55 +181,4 @@ elif aba == "Backup":
             with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
                 zip_ref.extractall(".")
             st.success("✅ Dados restaurados com sucesso! Recarregue a página.")
-            if st.button("🔄 Recarregar App"):
-                st.rerun()
-        except Exception as e:
-            st.error(f"Erro ao restaurar arquivo: {e}")
-
-# ==================== FINANCIAL SUMMARY ====================
-elif aba == "Financial Summary":
-    st.subheader("📊 Financial Summary")
-    st.markdown("Consolidated view of **Income**, **Expenses (including cards)**, **Cash Flow**, and **Cumulative Balance**.")
-
-    df = st.session_state.lancamentos
-    if not df.empty:
-        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
-
-        status_sel = st.selectbox("Filter by Status", ["All", "Efetivado", "Budget"])
-        start_date = st.date_input("Start Date", df["Data"].min().date() if not df["Data"].isna().all() else datetime.today().date())
-        end_date = st.date_input("End Date", df["Data"].max().date() if not df["Data"].isna().all() else datetime.today().date())
-
-        df_filtrado = df[(df["Data"].dt.date >= start_date) & (df["Data"].dt.date <= end_date)]
-        if status_sel != "All":
-            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
-
-        df_filtrado["Income"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
-        df_filtrado["Expense"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" else 0.0, axis=1)
-
-        pivot = df_filtrado.pivot_table(
-            index="AnoMes",
-            values=["Income", "Expense"],
-            aggfunc="sum",
-            fill_value=0.0
-        ).reset_index()
-
-        pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
-        
-        # Cálculo exato do Cash Flow
-        pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
-        pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
-
-        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
-
-        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
-        
-        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
-        
-        # Aplicação direta do Styler do Pandas para colorir e manter os números válidos
-        pivot_estilizado = pivot_exibicao.style.map(
-            colorir_negativos, subset=colunas_financeiras
-        )
-
-        st.dataframe(pivot_estilizado, use_container_width=True)
+            if st.button("�
