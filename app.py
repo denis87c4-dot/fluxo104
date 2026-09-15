@@ -57,7 +57,7 @@ def formatar_moeda_br(val):
         return "R$ 0,00"
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def colorir_negativos(val):
+def colorir_negativos_styler(val):
     if isinstance(val, (int, float)) and val < 0:
         return "color: #ff4b4b; font-weight: bold;"
     return ""
@@ -72,7 +72,7 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
+        df_estilizado = df_exibicao.style.map(colorir_negativos_styler, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
         st.dataframe(df_estilizado, use_container_width=True)
     else:
         st.dataframe(df_exibicao, use_container_width=True)
@@ -147,7 +147,7 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
+        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos_styler, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
         st.dataframe(df_cartoes_estilizado, use_container_width=True)
     else:
         st.dataframe(df_cartoes_exib, use_container_width=True)
@@ -221,72 +221,16 @@ elif aba == "Financial Summary":
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
         pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
+        
+        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
+        
+        # Mantém a tabela nativa limpa do Streamlit usando o Styler padrão do Pandas corretamente configurado
+        pivot_estilizado = pivot_exibicao.style.map(
+            colorir_negativos_styler, subset=colunas_financeiras
+        ).format(
+            formatar_moeda_br, subset=colunas_financeiras
+        )
 
-        if pivot_exibicao.empty:
-            st.info("Nenhum dado encontrado para o período selecionado.")
-        else:
-            # Renderização via tabela HTML personalizada para forçar a cor vermelha em negativos
-            html_table = """
-            <style>
-                .custom-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-family: sans-serif;
-                    font-size: 14px;
-                }
-                .custom-table th {
-                    background-color: #f0f2f6;
-                    color: #31333F;
-                    text-align: left;
-                    padding: 8px;
-                    border-bottom: 2px solid #dcdcdc;
-                }
-                .custom-table td {
-                    padding: 8px;
-                    border-bottom: 1px solid #e6e6e6;
-                }
-                .negativo {
-                    color: #ff4b4b;
-                    font-weight: bold;
-                }
-            </style>
-            <table class="custom-table">
-                <thead>
-                    <tr>
-                        <th>Month</th>
-                        <th>Income</th>
-                        <th>Expense</th>
-                        <th>Cash Flow</th>
-                        <th>Cumulative</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-
-            for _, row in pivot_exibicao.iterrows():
-                m_val = row["Month"]
-                inc_val = formatar_moeda_br(row["Income"])
-                exp_val = formatar_moeda_br(row["Expense"])
-                
-                cf_raw = row["Cash Flow"]
-                cf_val = formatar_moeda_br(cf_raw)
-                cf_class = ' class="negativo"' if cf_raw < 0 else ''
-
-                cum_raw = row["Cumulative"]
-                cum_val = formatar_moeda_br(cum_raw)
-                cum_class = ' class="negativo"' if cum_raw < 0 else ''
-
-                html_table += f"""
-                    <tr>
-                        <td>{m_val}</td>
-                        <td>{inc_val}</td>
-                        <td>{exp_val}</td>
-                        <td{cf_class}>{cf_val}</td>
-                        <td{cum_class}>{cum_val}</td>
-                    </tr>
-                """
-
-            html_table += "</tbody></table>"
-            st.markdown(html_table, unsafe_allow_html=True)
+        st.dataframe(pivot_estilizado, use_container_width=True)
     else:
         st.info("Nenhum lançamento cadastrado ainda.")
