@@ -214,8 +214,10 @@ elif aba == "Financial Summary":
         ).reset_index()
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
-        pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
-        pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
+        
+        # Assegura que o Cash Flow e Cumulative sejam explicitamente numéricos (float)
+        pivot["Cash Flow"] = pd.to_numeric(pivot["Income"] - pivot["Expense"], errors="coerce").fillna(0.0)
+        pivot["Cumulative"] = pd.to_numeric(pivot["Cash Flow"].cumsum(), errors="coerce").fillna(0.0)
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
@@ -223,6 +225,7 @@ elif aba == "Financial Summary":
         
         colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
         
+        # Aplicação robusta do Styler mapeando e formatando as colunas numéricas
         pivot_estilizado = pivot_exibicao.style.map(
             colorir_negativos, subset=colunas_financeiras
         ).format(
