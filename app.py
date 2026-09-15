@@ -36,15 +36,16 @@ else:
     st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
 # ==================== FUNÇÕES DE BACKUP ====================
-def salvar_backup():
+def salvar_backup(mostrar_aviso=True):
     st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
     st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
     pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
-    st.success("💾 Backup realizado com sucesso!")
+    if mostrar_aviso:
+        st.success("💾 Backup realizado com sucesso!")
 
 def salvar_backup_automatico():
     try:
-        salvar_backup()
+        salvar_backup(mostrar_aviso=False)
     except:
         pass
 
@@ -56,7 +57,16 @@ aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "
 # ==================== LANÇAMENTOS ====================
 if aba == "Lançamentos":
     st.subheader("📒 Registro de Lançamentos")
-    st.dataframe(st.session_state.lancamentos, use_container_width=True)
+    df_exibicao = st.session_state.lancamentos.copy()
+    
+    if not df_exibicao.empty and "Valor" in df_exibicao.columns:
+        df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
+        st.dataframe(
+            df_exibicao.style.format({"Valor": "R$ {:,.2f}".format}, locale="pt_BR"),
+            use_container_width=True
+        )
+    else:
+        st.dataframe(df_exibicao, use_container_width=True)
 
 # ==================== CADASTRO ====================
 elif aba == "Cadastro":
@@ -71,7 +81,7 @@ elif aba == "Cadastro":
         if nova_categoria:
             if nova_categoria not in st.session_state.categorias:
                 st.session_state.categorias.append(nova_categoria)
-                salvar_backup()
+                salvar_backup(mostrar_aviso=True)
                 st.success(f"✅ Nova categoria adicionada: {nova_categoria}")
             categoria = nova_categoria
 
@@ -114,25 +124,32 @@ elif aba == "Cadastro":
 
                 novo = pd.DataFrame(registros, columns=colunas_lancamentos)
                 
-                # Garante que o DataFrame principal siga rigorosamente a mesma estrutura antes do concat
                 if st.session_state.lancamentos.empty:
                     st.session_state.lancamentos = novo
                 else:
                     st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo], ignore_index=True)
                 
-                salvar_backup()
+                salvar_backup(mostrar_aviso=True)
                 st.success(f"✅ {num_parcelas} lançamento(s) cadastrado(s) com sucesso!")
 
 # ==================== CARTÕES ====================
 elif aba == "Cartões":
     st.subheader("💳 Gerenciamento de Cartões")
-    st.dataframe(st.session_state.cartoes, use_container_width=True)
+    df_cartoes_exib = st.session_state.cartoes.copy()
+    if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
+        df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
+        st.dataframe(
+            df_cartoes_exib.style.format({"Limite": "R$ {:,.2f}".format}, locale="pt_BR"),
+            use_container_width=True
+        )
+    else:
+        st.dataframe(df_cartoes_exib, use_container_width=True)
 
 # ==================== BACKUP ====================
 elif aba == "Backup":
     st.subheader("🔐 Central de Backup")
     if st.button("💾 Salvar Backup Local"):
-        salvar_backup()
+        salvar_backup(mostrar_aviso=True)
 
     arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
     arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
@@ -195,4 +212,10 @@ elif aba == "Financial Summary":
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        st.dataframe(pivot, use_container_width=True)
+        # Formatação das colunas financeiras na tabela resumo
+        colunas_financeiras = {"Income": "R$ {:,.2f}".format, "Expense": "R$ {:,.2f}".format, "Cash Flow": "R$ {:,.2f}".format, "Cumulative": "R$ {:,.2f}".format}
+        
+        st.dataframe(
+            pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].style.format(colunas_financeiras, locale="pt_BR"),
+            use_container_width=True
+        )
