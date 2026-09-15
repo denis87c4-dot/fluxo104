@@ -51,6 +51,17 @@ def salvar_backup_automatico():
 
 salvar_backup_automatico()
 
+# ==================== FUNÇÕES DE FORMATAÇÃO ====================
+def formatar_moeda_br(val):
+    if pd.isna(val):
+        return "R$ 0,00"
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def colorir_negativos(val):
+    if isinstance(val, (int, float)) and val < 0:
+        return "color: #ff4b4b; font-weight: bold;"
+    return ""
+
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
 
@@ -61,10 +72,8 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        st.dataframe(
-            df_exibicao.style.format({"Valor": "R$ {:,.2f}".format}, locale="pt_BR"),
-            use_container_width=True
-        )
+        df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
+        st.dataframe(df_estilizado, use_container_width=True)
     else:
         st.dataframe(df_exibicao, use_container_width=True)
 
@@ -138,10 +147,8 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        st.dataframe(
-            df_cartoes_exib.style.format({"Limite": "R$ {:,.2f}".format}, locale="pt_BR"),
-            use_container_width=True
-        )
+        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
+        st.dataframe(df_cartoes_estilizado, use_container_width=True)
     else:
         st.dataframe(df_cartoes_exib, use_container_width=True)
 
@@ -175,7 +182,7 @@ elif aba == "Backup":
             if st.button("🔄 Recarregar App"):
                 st.rerun()
         except Exception as e:
-            st.error(f"Erro ao restaurar arquivo: {e}")
+            st.error(f"❌ Erro ao restaurar arquivo: {e}")
 
 # ==================== FINANCIAL SUMMARY ====================
 elif aba == "Financial Summary":
@@ -212,10 +219,14 @@ elif aba == "Financial Summary":
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        # Formatação das colunas financeiras na tabela resumo
-        colunas_financeiras = {"Income": "R$ {:,.2f}".format, "Expense": "R$ {:,.2f}".format, "Cash Flow": "R$ {:,.2f}".format, "Cumulative": "R$ {:,.2f}".format}
+        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
         
-        st.dataframe(
-            pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].style.format(colunas_financeiras, locale="pt_BR"),
-            use_container_width=True
+        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
+        
+        pivot_estilizado = pivot_exibicao.style.map(
+            colorir_negativos, subset=colunas_financeiras
+        ).format(
+            formatar_moeda_br, subset=colunas_financeiras
         )
+
+        st.dataframe(pivot_estilizado, use_container_width=True)
