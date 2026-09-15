@@ -51,6 +51,17 @@ def salvar_backup_automatico():
 
 salvar_backup_automatico()
 
+# Função auxiliar para formatar em Real brasileiro mantendo o tipo numérico estruturado
+def formatar_moeda_br(val):
+    if pd.isna(val):
+        return "R$ 0,00"
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# Função de estilo para deixar valores negativos em vermelho
+def colorir_negativos(val):
+    cor = 'color: red;' if isinstance(val, (int, float)) and val < 0 else ''
+    return cor
+
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
 
@@ -61,10 +72,13 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        # Formatação direta para Real Brasileiro
-        df_exibicao["Valor"] = df_exibicao["Valor"].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    
-    st.dataframe(df_exibicao, use_container_width=True)
+        # Se for despesa, podemos opcionalmente exibir como negativo ou manter o valor com formatação e cor condicional
+        df_estilizado = df_exibicao.style.format({"Valor": formatar_moeda_br}).map(
+            colorir_negativos, subset=["Valor"]
+        )
+        st.dataframe(df_estilizado, use_container_width=True)
+    else:
+        st.dataframe(df_exibicao, use_container_width=True)
 
 # ==================== CADASTRO ====================
 elif aba == "Cadastro":
@@ -136,9 +150,12 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        df_cartoes_exib["Limite"] = df_cartoes_exib["Limite"].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    
-    st.dataframe(df_cartoes_exib, use_container_width=True)
+        df_cartoes_estilizado = df_cartoes_exib.style.format({"Limite": formatar_moeda_br}).map(
+            colorir_negativos, subset=["Limite"]
+        )
+        st.dataframe(df_cartoes_estilizado, use_container_width=True)
+    else:
+        st.dataframe(df_cartoes_exib, use_container_width=True)
 
 # ==================== BACKUP ====================
 elif aba == "Backup":
@@ -207,8 +224,15 @@ elif aba == "Financial Summary":
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].copy()
-        for col in ["Income", "Expense", "Cash Flow", "Cumulative"]:
-            pivot_exibicao[col] = pivot_exibicao[col].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
+        
+        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
+        
+        # Aplicação da formatação em moeda e do destaque em vermelho para números negativos
+        pivot_estilizado = pivot_exibicao.style.format(
+            {col: formatar_moeda_br for col in colunas_financeiras}
+        ).map(
+            colorir_negativos, subset=colunas_financeiras
+        )
 
-        st.dataframe(pivot_exibicao, use_container_width=True)
+        st.dataframe(pivot_estilizado, use_container_width=True)
