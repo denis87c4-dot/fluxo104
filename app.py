@@ -51,13 +51,12 @@ def salvar_backup_automatico():
 
 salvar_backup_automatico()
 
-# Função de formatação numérica limpa (retorna float para o Pandas lidar com o Styler corretamente)
+# ==================== FUNÇÕES DE FORMATAÇÃO ====================
 def formatar_moeda_br(val):
     if pd.isna(val):
         return "R$ 0,00"
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# Função de cores para valores negativos (compatível com Pandas Styler)
 def colorir_negativos(val):
     if isinstance(val, (int, float)) and val < 0:
         return "color: #ff4b4b; font-weight: bold;"
@@ -73,7 +72,6 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        
         df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
         st.dataframe(df_estilizado, use_container_width=True)
     else:
@@ -181,4 +179,7 @@ elif aba == "Backup":
             with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
                 zip_ref.extractall(".")
             st.success("✅ Dados restaurados com sucesso! Recarregue a página.")
-            if st.button("�
+            if st.button("🔄 Recarregar App"):
+                st.rerun()
+        except Exception as e:
+            st.error(f
