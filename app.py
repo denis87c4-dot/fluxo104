@@ -51,17 +51,6 @@ def salvar_backup_automatico():
 
 salvar_backup_automatico()
 
-# ==================== FUNÇÕES DE FORMATAÇÃO ====================
-def formatar_moeda_br(val):
-    if pd.isna(val):
-        return "R$ 0,00"
-    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def colorir_negativos_styler(val):
-    if isinstance(val, (int, float)) and val < 0:
-        return "color: #ff4b4b; font-weight: bold;"
-    return ""
-
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
 
@@ -72,15 +61,76 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        df_estilizado = df_exibicao.style.map(
-            colorir_negativos_styler, subset=["Valor"]
-        ).format(
-            formatar_moeda_br, subset=["Valor"]
+        st.dataframe(
+            df_exibicao.style.format({"Valor": "R$ {:,.2f}".format}, locale="pt_BR"),
+            use_container_width=True
         )
-        # ✅ Usar st.write para aplicar estilos
-        st.write(df_estilizado)
     else:
         st.dataframe(df_exibicao, use_container_width=True)
+
+# ==================== CADASTRO ====================
+elif aba == "Cadastro":
+    st.subheader("📝 Cadastro de Lançamentos")
+    with st.form("form_lancamento"):
+        tipo = st.selectbox("Tipo", ["Receita", "Despesa", "Transferência"])
+        status = st.selectbox("Status", ["Efetivado", "Budget"])
+        descricao = st.text_input("Descrição *")
+
+        nova_categoria = st.text_input("Adicionar nova categoria (opcional)")
+        categoria = st.selectbox("Categoria", st.session_state.categorias)
+        if nova_categoria:
+            if nova_categoria not in st.session_state.categorias:
+                st.session_state.categorias.append(nova_categoria)
+                salvar_backup(mostrar_aviso=True)
+                st.success(f"✅ Nova categoria adicionada: {nova_categoria}")
+            categoria = nova_categoria
+
+        if not st.session_state.lancamentos.empty and "Conta" in st.session_state.lancamentos.columns:
+            contas_existentes = st.session_state.lancamentos["Conta"].dropna().unique().tolist()
+        else:
+            contas_existentes = []
+            
+        conta = st.selectbox("Conta", contas_existentes + ["Adicionar nova"])
+        if conta == "Adicionar nova":
+            conta = st.text_input("Nova Conta")
+
+        conta_destino = st.text_input("Conta Destino")
+        valor = st.number_input("Valor (R$) *", min_value=0.0, step=0.01)
+        data = st.date_input("Data *")
+        num_parcelas = st.number_input("Número de Parcelas", min_value=1, step=1, value=1)
+        
+        regra_parcelamento = st.selectbox("Forma de Parcelamento", ["Replicar Integralmente", "Parcelado"])
+        forma_pagamento = st.selectbox("Forma de Pagamento", ["Conta Corrente", "Cartão", "Pix", "Outros"])
+        observacoes = st.text_area("Observações (opcional)")
+
+        submit = st.form_submit_button("Salvar")
+        if submit:
+            if descricao.strip() == "" or valor <= 0:
+                st.error("⚠️ Preencha os campos obrigatórios (Descrição e Valor).")
+            else:
+                registros = []
+                for i in range(num_parcelas):
+                    if regra_parcelamento == "Parcelado":
+                        valor_parcela = valor / num_parcelas
+                    else:
+                        valor_parcela = valor
+
+                    data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
+                    registros.append([
+                        str(tipo), str(status), str(descricao), str(categoria), str(conta), str(conta_destino),
+                        float(valor_parcela), data_parcela.strftime("%Y-%m-%d"), str(f"{i+1}/{num_parcelas}"), 
+                        str(regra_parcelamento), str(forma_pagamento), str(observacoes)
+                    ])
+
+                novo = pd.DataFrame(registros, columns=colunas_lancamentos)
+                
+                if st.session_state.lancamentos.empty:
+                    st.session_state.lancamentos = novo
+                else:
+                    st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo], ignore_index=True)
+                
+                salvar_backup(mostrar_aviso=True)
+                st.success(f"✅ {num_parcelas} lançamento(s) cadastrado(s) com sucesso!")
 
 # ==================== CARTÕES ====================
 elif aba == "Cartões":
@@ -88,12 +138,10 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        df_cartoes_estilizado = df_cartoes_exib.style.map(
-            colorir_negativos_styler, subset=["Limite"]
-        ).format(
-            formatar_moeda_br, subset=["Limite"]
+        st.dataframe(
+            df_cartoes_exib.style.format({"Limite": "R$ {:,.2f}".format}, locale="pt_BR"),
+            use_container_width=True
         )
-        st.write(df_cartoes_estilizado)
     else:
         st.dataframe(df_cartoes_exib, use_container_width=True)
 
@@ -127,7 +175,7 @@ elif aba == "Backup":
             if st.button("🔄 Recarregar App"):
                 st.rerun()
         except Exception as e:
-            st.error(f"❌ Erro ao restaurar arquivo: {e}")
+            st.error(f"Erro ao restaurar arquivo: {e}")
 
 # ==================== FINANCIAL SUMMARY ====================
 elif aba == "Financial Summary":
@@ -159,22 +207,15 @@ elif aba == "Financial Summary":
         ).reset_index()
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
-        
-        pivot["Cash Flow"] = pd.to_numeric(pivot["Income"] - pivot["Expense"], errors="coerce").fillna(0.0)
-        pivot["Cumulative"] = pd.to_numeric(pivot["Cash Flow"].cumsum(), errors="coerce").fillna(0.0)
+        pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
+        pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
+        # Formatação das colunas financeiras na tabela resumo
+        colunas_financeiras = {"Income": "R$ {:,.2f}".format, "Expense": "R$ {:,.2f}".format, "Cash Flow": "R$ {:,.2f}".format, "Cumulative": "R$ {:,.2f}".format}
         
-        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
-        
-        pivot_estilizado = pivot_exibicao.style.map(
-            colorir_negativos_styler, subset=colunas_financeiras
-        ).format(
-            formatar_moeda_br, subset=colunas_financeiras
+        st.dataframe(
+            pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].style.format(colunas_financeiras, locale="pt_BR"),
+            use_container_width=True
         )
-
-        st.write(pivot_estilizado)
-    else:
-        st.info("Nenhum lançamento cadastrado ainda.")
