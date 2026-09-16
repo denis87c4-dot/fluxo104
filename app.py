@@ -11,6 +11,7 @@ st.title("💰 Fluxo104 - Gestão Financeira Simplificada")
 
 # ==================== PERSISTÊNCIA DE DADOS ====================
 ARQUIVO_LANCAMENTOS = "lancamentos.csv"
+ARQUIVO_CARTOES = "cartoes.csv"
 ARQUIVO_CATEGORIAS = "categorias.csv"
 
 colunas_lancamentos = [
@@ -27,11 +28,17 @@ if os.path.exists(ARQUIVO_CATEGORIAS):
     df_cat = pd.read_csv(ARQUIVO_CATEGORIAS)
     st.session_state.categorias = df_cat["Categoria"].tolist()
 else:
-    st.session_state.categorias = ["Alimentação", "Transporte", "Moradia", "Lazer", "Transferência", "Outros"]
+    st.session_state.categorias = ["Food", "Transporte", "Moradia", "Lazer", "Transferência", "Outros"]
+
+if os.path.exists(ARQUIVO_CARTOES):
+    st.session_state.cartoes = pd.read_csv(ARQUIVO_CARTOES)
+else:
+    st.session_state.cartoes = pd.DataFrame(columns=["Nome", "Fechamento", "Limite", "Vencimento"])
 
 # ==================== FUNÇÕES DE BACKUP ====================
 def salvar_backup(mostrar_aviso=True):
     st.session_state.lancamentos.to_csv(ARQUIVO_LANCAMENTOS, index=False)
+    st.session_state.cartoes.to_csv(ARQUIVO_CARTOES, index=False)
     pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(ARQUIVO_CATEGORIAS, index=False)
     if mostrar_aviso:
         st.success("💾 Backup realizado com sucesso!")
@@ -56,129 +63,170 @@ def colorir_negativos(val):
     return ""
 
 # ==================== NAVEGAÇÃO ====================
-aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Backup"])
+aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
 
 # ==================== LANÇAMENTOS ====================
 if aba == "Lançamentos":
     st.subheader("📒 Registro de Lançamentos")
+    df_exibicao = st.session_state.lancamentos.copy()
     
-    if st.session_state.lancamentos.empty:
-        st.info("Nenhum lançamento cadastrado ainda. Vá na aba **Cadastro** para adicionar novos registros.")
-    else:
-        df_exibicao = st.session_state.lancamentos.copy()
+    if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        
-        # Filtros rápidos
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos"] + list(df_exibicao["Tipo"].dropna().unique()))
-        with col_f2:
-            filtro_cat = st.selectbox("Filtrar por Categoria", ["Todas"] + list(df_exibicao["Categoria"].dropna().unique()))
-            
-        if filtro_tipo != "Todos":
-            df_exibicao = df_exibicao[df_exibicao["Tipo"] == filtro_tipo]
-        if filtro_cat != "Todas":
-            df_exibicao = df_exibicao[df_exibicao["Categoria"] == filtro_cat]
-
         df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
         st.dataframe(df_estilizado, use_container_width=True)
+    else:
+        st.dataframe(df_exibicao, use_container_width=True)
 
 # ==================== CADASTRO ====================
 elif aba == "Cadastro":
     st.subheader("📝 Cadastro de Lançamentos")
-    
-    with st.form("form_cadastro", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            tipo = st.selectbox("Tipo", ["Despesa", "Receita", "Transferência"])
-            status = st.selectbox("Status", ["Pago / Realizado", "Pendente"])
-            descricao = st.text_input("Descrição")
-            categoria = st.selectbox("Categoria", st.session_state.categorias)
-            conta = st.text_input("Conta / Carteira", value="Conta Principal")
-            conta_destino = st.text_input("Conta Destino (Apenas para Transferências)", value="")
+    with st.form("form_lancamento"):
+        tipo = st.selectbox("Tipo", ["Receita", "Despesa", "Transferência"])
+        status = st.selectbox("Status", ["Efetivado", "Budget"])
+        descricao = st.text_input("Descrição *")
+
+        nova_categoria = st.text_input("Adicionar nova categoria (opcional)")
+        categoria = st.selectbox("Categoria", st.session_state.categorias)
+        if nova_categoria:
+            if nova_categoria not in st.session_state.categorias:
+                st.session_state.categorias.append(nova_categoria)
+                salvar_backup(mostrar_aviso=True)
+                st.success(f"✅ Nova categoria adicionada: {nova_categoria}")
+            categoria = nova_categoria
+
+        if not st.session_state.lancamentos.empty and "Conta" in st.session_state.lancamentos.columns:
+            contas_existentes = st.session_state.lancamentos["Conta"].dropna().unique().tolist()
+        else:
+            contas_existentes = []
             
-        with col2:
-            valor = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
-            data = st.date_input("Data", value=datetime.today())
-            forma_pagamento = st.selectbox("Forma de Pagamento", ["Pix", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Boleto", "Outros"])
-            parcela = st.text_input("Parcela (ex: 1/12)", value="1/1")
-            regra_parcelamento = st.selectbox("Regra de Parcelamento", ["Única", "Parcelado Mensal", "Recorrente Mensal"])
-            observacoes = st.text_area("Observações")
-            
-        submitted = st.form_submit_button("Salvar Lançamento")
+        conta = st.selectbox("Conta", contas_existentes + ["Adicionar nova"])
+        if conta == "Adicionar nova":
+            conta = st.text_input("Nova Conta")
+
+        conta_destino = st.text_input("Conta Destino")
+        valor = st.number_input("Valor (R$) *", min_value=0.0, step=0.01)
+        data = st.date_input("Data *")
+        num_parcelas = st.number_input("Número de Parcelas", min_value=1, step=1, value=1)
         
-        if submitted:
-            if not descricao.strip():
-                st.warning("Por favor, preencha a descrição do lançamento.")
+        regra_parcelamento = st.selectbox("Forma de Parcelamento", ["Replicar Integralmente", "Parcelado"])
+        forma_pagamento = st.selectbox("Forma de Pagamento", ["Conta Corrente", "Cartão", "Pix", "Outros"])
+        observacoes = st.text_area("Observações (opcional)")
+
+        submit = st.form_submit_button("Salvar")
+        if submit:
+            if descricao.strip() == "" or valor <= 0:
+                st.error("⚠️ Preencha os campos obrigatórios (Descrição e Valor).")
             else:
-                # Se for despesa, converte o valor para negativo para consistência financeira
-                valor_final = -abs(valor) if tipo == "Despesa" else abs(valor)
-                if tipo == "Transferência":
-                    valor_final = abs(valor) # Transferência neutra ou conforme sua regra
+                registros = []
+                for i in range(num_parcelas):
+                    if regra_parcelamento == "Parcelado":
+                        valor_parcela = valor / num_parcelas
+                    else:
+                        valor_parcela = valor
+
+                    data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
+                    registros.append([
+                        str(tipo), str(status), str(descricao), str(categoria), str(conta), str(conta_destino),
+                        float(valor_parcela), data_parcela.strftime("%Y-%m-%d"), str(f"{i+1}/{num_parcelas}"), 
+                        str(regra_parcelamento), str(forma_pagamento), str(observacoes)
+                    ])
+
+                novo = pd.DataFrame(registros, columns=colunas_lancamentos)
                 
-                novo_registro = {
-                    "Tipo": tipo,
-                    "Status": status,
-                    "Descricao": descricao,
-                    "Categoria": categoria,
-                    "Conta": conta,
-                    "ContaDestino": conta_destino if tipo == "Transferência" else "",
-                    "Valor": valor_final,
-                    "Data": str(data),
-                    "Parcela": parcela,
-                    "RegraParcelamento": regra_parcelamento,
-                    "FormaPagamento": forma_pagamento,
-                    "Observacoes": observacoes
-                }
+                if st.session_state.lancamentos.empty:
+                    st.session_state.lancamentos = novo
+                else:
+                    st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo], ignore_index=True)
                 
-                novo_df = pd.DataFrame([novo_registro])
-                st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo_df], ignore_index=True)
-                salvar_backup(mostrar_aviso=False)
-                st.success("✅ Lançamento cadastrado com sucesso!")
+                salvar_backup(mostrar_aviso=True)
+                st.success(f"✅ {num_parcelas} lançamento(s) cadastrado(s) com sucesso!")
+
+# ==================== CARTÕES ====================
+elif aba == "Cartões":
+    st.subheader("💳 Gerenciamento de Cartões")
+    df_cartoes_exib = st.session_state.cartoes.copy()
+    if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
+        df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
+        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
+        st.dataframe(df_cartoes_estilizado, use_container_width=True)
+    else:
+        st.dataframe(df_cartoes_exib, use_container_width=True)
 
 # ==================== BACKUP ====================
 elif aba == "Backup":
-    st.subheader("💾 Gerenciamento de Backup e Dados")
-    
-    col_ b1, col_b2 = st.columns(2)
-    
-    with col_b1:
-        st.markdown("### Exportar Dados")
-        st.write("Baixe todos os seus lançamentos e categorias em formato compactado (.zip).")
+    st.subheader("🔐 Central de Backup")
+    if st.button("💾 Salvar Backup Local"):
+        salvar_backup(mostrar_aviso=True)
+
+    arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
+    arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
+    if arquivos_existentes:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for arq in arquivos_existentes:
+                zip_file.write(arq)
+        zip_buffer.seek(0)
+        st.download_button(
+            label="📥 Baixar Backup Completo (.zip)",
+            data=zip_buffer,
+            file_name=f"backup_fluxo104_{datetime.today().strftime('%Y-%m-%d')}.zip",
+            mime="application/zip"
+        )
+
+    arquivo_upload = st.file_uploader("📤 Restaurar Backup (ZIP)", type="zip")
+    if arquivo_upload is not None:
+        try:
+            with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
+                zip_ref.extractall(".")
+            st.success("✅ Dados restaurados com sucesso! Recarregue a página.")
+            if st.button("🔄 Recarregar App"):
+                st.rerun()
+        except Exception as e:
+            st.error(f"❌ Erro ao restaurar arquivo: {e}")
+
+# ==================== FINANCIAL SUMMARY ====================
+elif aba == "Financial Summary":
+    st.subheader("📊 Financial Summary")
+    st.markdown("Consolidated view of **Income**, **Expenses (including cards)**, **Cash Flow**, and **Cumulative Balance**.")
+
+    df = st.session_state.lancamentos
+    if not df.empty:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+        df["AnoMes"] = df["Data"].dt.to_period("M").astype(str)
+
+        status_sel = st.selectbox("Filter by Status", ["All", "Efetivado", "Budget"])
+        start_date = st.date_input("Start Date", df["Data"].min().date() if not df["Data"].isna().all() else datetime.today().date())
+        end_date = st.date_input("End Date", df["Data"].max().date() if not df["Data"].isna().all() else datetime.today().date())
+
+        df_filtrado = df[(df["Data"].dt.date >= start_date) & (df["Data"].dt.date <= end_date)]
+        if status_sel != "All":
+            df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
+
+        df_filtrado["Income"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else 0.0, axis=1)
+        df_filtrado["Expense"] = df_filtrado.apply(lambda r: r["Valor"] if r["Tipo"] == "Despesa" else 0.0, axis=1)
+
+        pivot = df_filtrado.pivot_table(
+            index="AnoMes",
+            values=["Income", "Expense"],
+            aggfunc="sum",
+            fill_value=0.0
+        ).reset_index()
+
+        pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
+        pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
+        pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
+
+        pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
+
+        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
         
-        if not st.session_state.lancamentos.empty:
-            buffer = io.BytesIO()
-            with zipfile.ZipFile(buffer, "w") as zf:
-                zf.writestr("lancamentos.csv", st.session_state.lancamentos.to_csv(index=False))
-                zf.writestr("categorias.csv", pd.DataFrame({"Categoria": st.session_state.categorias}).to_csv(index=False))
-            buffer.seek(0)
-            
-            st.download_button(
-                label="📥 Baixar Backup Completo (ZIP)",
-                data=buffer,
-                file_name=f"backup_fluxo104_{datetime.today().strftime('%Y-%m-%d')}.zip",
-                mime="application/zip"
-            )
-        else:
-            st.info("Não há dados suficientes para exportar.")
-            
-    with col_b2:
-        st.markdown("### Importar Dados")
-        st.write("Restaure seus dados a partir de um arquivo de backup ZIP gerado anteriormente.")
+        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
         
-        arquivo_upload = st.file_uploader("Enviar arquivo ZIP de backup", type=["zip"])
-        if arquivo_upload is not None:
-            try:
-                with zipfile.ZipFile(arquivo_upload, "r") as zf:
-                    if "lancamentos.csv" in zf.namelist():
-                        with zf.open("lancamentos.csv") as f:
-                            st.session_state.lancamentos = pd.read_csv(f)
-                    if "categorias.csv" in zf.namelist():
-                        with zf.open("categorias.csv") as f:
-                            df_cat_imp = pd.read_csv(f)
-                            st.session_state.categorias = df_cat_imp["Categoria"].tolist()
-                salvar_backup(mostrar_aviso=False)
-                st.success("🔄 Dados restaurados com sucesso! Atualize a página se necessário.")
-            except Exception as e:
-                st.error(f"Erro ao importar o arquivo: {e}")
+        pivot_estilizado = pivot_exibicao.style.map(
+            colorir_negativos, subset=colunas_financeiras
+        ).format(
+            formatar_moeda_br, subset=colunas_financeiras
+        )
+
+        st.dataframe(pivot_estilizado, use_container_width=True)
