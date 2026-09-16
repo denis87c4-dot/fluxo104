@@ -51,16 +51,33 @@ def salvar_backup_automatico():
 
 salvar_backup_automatico()
 
-# ==================== FUNÇÕES DE FORMATAÇÃO ====================
+# ==================== FUNÇÃO DE ESTILO (PADRÃO DE ELITE) ====================
+def colorir_negativos(val):
+    if isinstance(val, str) and "R$" in val:
+        try:
+            limpo = val.replace("R$", "").replace(".", "").replace(",", ".").replace("%", "").strip()
+            val_num = float(limpo)
+            if val_num < 0:
+                return 'color: #ff4b4b; font-weight: bold;'
+        except:
+            pass
+    elif isinstance(val, (int, float)) and val < 0:
+        return 'color: #ff4b4b; font-weight: bold;'
+    return ''
+
+def aplicar_estilo_tabela(df_styled, subset=None):
+    try:
+        if hasattr(df_styled, "map"):
+            return df_styled.map(colorir_negativos, subset=subset)
+        else:
+            return df_styled.applymap(colorir_negativos, subset=subset)
+    except Exception:
+        return df_styled
+
 def formatar_moeda_br(val):
     if pd.isna(val):
         return "R$ 0,00"
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def colorir_negativos(val):
-    if isinstance(val, (int, float)) and val < 0:
-        return "color: #ff4b4b; font-weight: bold;"
-    return ""
 
 # ==================== NAVEGAÇÃO ====================
 aba = st.sidebar.radio("Navegação", ["Lançamentos", "Cadastro", "Cartões", "Backup", "Financial Summary"])
@@ -72,7 +89,7 @@ if aba == "Lançamentos":
     
     if not df_exibicao.empty and "Valor" in df_exibicao.columns:
         df_exibicao["Valor"] = pd.to_numeric(df_exibicao["Valor"], errors="coerce").fillna(0.0)
-        df_estilizado = df_exibicao.style.map(colorir_negativos, subset=["Valor"]).format(formatar_moeda_br, subset=["Valor"])
+        df_estilizado = aplicar_estilo_tabela(df_exibicao.style.format(formatar_moeda_br, subset=["Valor"]), subset=["Valor"])
         st.dataframe(df_estilizado, use_container_width=True)
     else:
         st.dataframe(df_exibicao, use_container_width=True)
@@ -147,7 +164,7 @@ elif aba == "Cartões":
     df_cartoes_exib = st.session_state.cartoes.copy()
     if not df_cartoes_exib.empty and "Limite" in df_cartoes_exib.columns:
         df_cartoes_exib["Limite"] = pd.to_numeric(df_cartoes_exib["Limite"], errors="coerce").fillna(0.0)
-        df_cartoes_estilizado = df_cartoes_exib.style.map(colorir_negativos, subset=["Limite"]).format(formatar_moeda_br, subset=["Limite"])
+        df_cartoes_estilizado = aplicar_estilo_tabela(df_cartoes_exib.style.format(formatar_moeda_br, subset=["Limite"]), subset=["Limite"])
         st.dataframe(df_cartoes_estilizado, use_container_width=True)
     else:
         st.dataframe(df_cartoes_exib, use_container_width=True)
@@ -215,24 +232,22 @@ elif aba == "Financial Summary":
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
         
-        # APLICANDO A LÓGICA EXATA: Income - Expense
+        # Lógica exata solicitada: Income - Expense
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
-        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
+        pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].copy()
         
-        # Função específica para colorir se menor que zero na linha de exibição
-        def colorir_fluxo_e_acumulado(val):
-            if isinstance(val, (int, float)) and val < 0:
-                return "color: #ff4b4b; font-weight: bold;"
-            return ""
+        # Formatando os valores como string de moeda antes de aplicar o estilo do código de referência
+        for col in ["Income", "Expense", "Cash Flow", "Cumulative"]:
+            pivot_exibicao[col] = pivot_exibicao[col].apply(formatar_moeda_br)
 
-        pivot_estilizado = pivot_exibicao.style.map(
-            colorir_fluxo_e_acumulado, subset=["Cash Flow", "Cumulative"]
-        ).format(
-            formatar_moeda_br, subset=["Income", "Expense", "Cash Flow", "Cumulative"]
+        # Aplicando a estilização exata de negativos baseada em string/número do código original
+        pivot_estilizado = aplicar_estilo_tabela(
+            pivot_exibicao.set_index("Month").style, 
+            subset=["Cash Flow", "Cumulative"]
         )
 
         st.dataframe(pivot_estilizado, use_container_width=True)
