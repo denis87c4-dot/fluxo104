@@ -214,6 +214,8 @@ elif aba == "Financial Summary":
         ).reset_index()
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
+        
+        # APLICANDO A LÓGICA EXATA: Income - Expense
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
 
@@ -221,13 +223,16 @@ elif aba == "Financial Summary":
 
         pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
         
-        # Aplicamos o estilo especificamente nas colunas Cash Flow e Cumulative (além de Income/Expense se necessário)
-        colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
-        
+        # Função específica para colorir se menor que zero na linha de exibição
+        def colorir_fluxo_e_acumulado(val):
+            if isinstance(val, (int, float)) and val < 0:
+                return "color: #ff4b4b; font-weight: bold;"
+            return ""
+
         pivot_estilizado = pivot_exibicao.style.map(
-            colorir_negativos, subset=colunas_financeiras
+            colorir_fluxo_e_acumulado, subset=["Cash Flow", "Cumulative"]
         ).format(
-            formatar_moeda_br, subset=colunas_financeiras
+            formatar_moeda_br, subset=["Income", "Expense", "Cash Flow", "Cumulative"]
         )
 
         st.dataframe(pivot_estilizado, use_container_width=True)
