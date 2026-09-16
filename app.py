@@ -153,30 +153,4 @@ elif aba == "Cartões":
         st.dataframe(df_cartoes_exib, use_container_width=True)
 
 # ==================== BACKUP ====================
-elif aba == "Backup":
-    st.subheader("🔐 Central de Backup")
-    if st.button("💾 Salvar Backup Local"):
-        salvar_backup(mostrar_aviso=True)
-
-    arquivos_para_backup = [ARQUIVO_LANCAMENTOS, ARQUIVO_CARTOES, ARQUIVO_CATEGORIAS]
-    arquivos_existentes = [f for f in arquivos_para_backup if os.path.exists(f)]
-    if arquivos_existentes:
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for arq in arquivos_existentes:
-                zip_file.write(arq)
-        zip_buffer.seek(0)
-        st.download_button(
-            label="📥 Baixar Backup Completo (.zip)",
-            data=zip_buffer,
-            file_name=f"backup_fluxo104_{datetime.today().strftime('%Y-%m-%d')}.zip",
-            mime="application/zip"
-        )
-
-    arquivo_upload = st.file_uploader("📤 Restaurar Backup (ZIP)", type="zip")
-    if arquivo_upload is not None:
-        try:
-            with zipfile.ZipFile(arquivo_upload, "r") as zip_ref:
-                zip_ref.extractall(".")
-            st.success("✅ Dados restaurados com sucesso! Recarregue a página.")
-            if st.button("
+elif aba == "
