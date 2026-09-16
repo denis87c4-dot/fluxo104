@@ -221,6 +221,7 @@ elif aba == "Financial Summary":
 
         pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]]
         
+        # Aplicamos o estilo especificamente nas colunas Cash Flow e Cumulative (além de Income/Expense se necessário)
         colunas_financeiras = ["Income", "Expense", "Cash Flow", "Cumulative"]
         
         pivot_estilizado = pivot_exibicao.style.map(
